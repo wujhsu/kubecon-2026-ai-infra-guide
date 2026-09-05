@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="从设备发现到队列、成组调度、拓扑与多集群，建立 DRA、Kueue、Volcano、LWS、Karmada 的分工地图。"><meta name="color-scheme" content="light dark">
+  <title>把正确的任务放到正确的 GPU：Kubernetes AI 调度 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/08-k8s-ai-scheduling.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">调度与资源 · 65 分钟</div><h1>把正确的任务放到正确的 GPU：Kubernetes AI 调度</h1><p>从设备发现到队列、成组调度、拓扑与多集群，建立 DRA、Kueue、Volcano、LWS、Karmada 的分工地图。</p><div class="meta"><span>中级</span><span>更新于 2026-09-05</span><span>3 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#先把五个项目放对位置" class="toc-h2">先把五个项目放对位置</a><a href="#从-device-plugin-到-dra" class="toc-h2">从 Device Plugin 到 DRA</a><a href="#队列与准入" class="toc-h2">队列与准入</a><a href="#gang-scheduling" class="toc-h2">Gang Scheduling</a><a href="#拓扑感知" class="toc-h2">拓扑感知</a><a href="#gpu-共享" class="toc-h2">GPU 共享</a><a href="#多集群何时有必要" class="toc-h2">多集群何时有必要</a><a href="#完整案例-32-卡训练为什么占了-20-卡却不运行" class="toc-h2">完整案例：32 卡训练为什么占了 20 卡却不运行</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>理解 Device Plugin 与 DRA 的差别；知道 Kueue、Volcano、LWS、Karmada 分别在队列、调度、工作负载和多集群哪一层；能解释拓扑感知与 Gang Scheduling。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：调度 AI 任务像安排大型乐团巡演。既要先批准预算和档期，又要让整组乐手同时到场，还要把经常合作的人安排在相邻位置，最后可能跨城市调配。</p>
+</blockquote>
+<h2 id="先把五个项目放对位置">先把五个项目放对位置</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>主要管理对象</th>
+<th>关键问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DRA</td>
+<td>设备申请与分配</td>
+<td>如何表达 GPU、NIC、拓扑和设备属性？</td>
+</tr>
+<tr>
+<td>Kueue</td>
+<td>工作负载准入与队列</td>
+<td>谁现在可以占用多少资源？</td>
+</tr>
+<tr>
+<td>Volcano</td>
+<td>Batch/AI 调度能力</td>
+<td>一组任务怎样一起调度、抢占和共享 GPU？</td>
+</tr>
+<tr>
+<td>LeaderWorkerSet</td>
+<td>多 Pod 推理副本</td>
+<td>Leader 与 Worker 怎样作为一个副本管理？</td>
+</tr>
+<tr>
+<td>Karmada</td>
+<td>多 Kubernetes 集群</td>
+<td>工作负载应放到哪个集群，怎样跨集群编排？</td>
+</tr>
+</tbody>
+</table>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IFRCCiAgICBXW0FJIFdvcmtsb2FkXSAtLT4gUVtLdWV1ZTog5piv5ZCm5YeG5YWlXQogICAgUSAtLT4gTFtMV1MgLyBKb2I6IOWmguS9leaPj+i/sOaIkOe7hOW3peS9nOi0n+i9vV0KICAgIEwgLS0+IFNbU2NoZWR1bGVyIC8gVm9sY2Fubzog5pS+5Yiw5ZOq5Lqb6IqC54K5XQogICAgUyAtLT4gRFtEUkE6IOWIhumFjeWTquS6m+iuvuWkh10KICAgIENbS2FybWFkYV0gLS0+fOi3qOmbhue+pOmAieaLqXwgUQo=">flowchart TB
+    W[AI Workload] --&gt; Q[Kueue: 是否准入]
+    Q --&gt; L[LWS / Job: 如何描述成组工作负载]
+    L --&gt; S[Scheduler / Volcano: 放到哪些节点]
+    S --&gt; D[DRA: 分配哪些设备]
+    C[Karmada] --&gt;|跨集群选择| Q
+</pre></div><p>这些边界不是绝对的，项目会扩展并交叠。先问“核心 API 管理什么对象”，可以避免被产品功能列表绕晕。</p>
+<h2 id="从-device-plugin-到-dra">从 Device Plugin 到 DRA</h2>
+<p>传统 Device Plugin 常把设备暴露成类似 <code>vendor.com/gpu: 2</code> 的整数资源，简单但难表达型号、显存、共享方式、NIC 关系和复杂拓扑。</p>
+<p>DRA 让 Pod 通过 ResourceClaim 请求带属性的设备，驱动和调度器协作完成分配、准备、状态与访问控制。Kubernetes 1.37 是制作时稳定版本；论坛场次会讨论 1.36 周期内多项 DRA KEP 的架构整合。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="c2VxdWVuY2VEaWFncmFtCiAgICBwYXJ0aWNpcGFudCBQIGFzIFBvZAogICAgcGFydGljaXBhbnQgQyBhcyBSZXNvdXJjZUNsYWltCiAgICBwYXJ0aWNpcGFudCBTIGFzIFNjaGVkdWxlcgogICAgcGFydGljaXBhbnQgRCBhcyBEUkEgRHJpdmVyCiAgICBwYXJ0aWNpcGFudCBLIGFzIGt1YmVsZXQKICAgIFAtPj5DOiDlo7DmmI7orr7lpIfpnIDmsYIKICAgIFMtPj5DOiDnu5PlkIjoioLngrnlkozmi5PmiZHliIbphY0KICAgIFMtPj5EOiDpgInmi6nlhbfkvZPorr7lpIcKICAgIEstPj5EOiDlh4blpIforr7lpIcKICAgIEstPj5QOiDlkK/liqjlubbmjojkuojorr/pl64K">sequenceDiagram
+    participant P as Pod
+    participant C as ResourceClaim
+    participant S as Scheduler
+    participant D as DRA Driver
+    participant K as kubelet
+    P-&gt;&gt;C: 声明设备需求
+    S-&gt;&gt;C: 结合节点和拓扑分配
+    S-&gt;&gt;D: 选择具体设备
+    K-&gt;&gt;D: 准备设备
+    K-&gt;&gt;P: 启动并授予访问
+</pre></div><h2 id="队列与准入">队列与准入</h2>
+<p>假设研究组 A 申请 64 张 GPU、B 申请 8 张。如果直接交给默认调度器，A 可能零散占住部分 GPU 却无法启动，B 也被阻塞。Kueue 在 Pod 真正竞争资源前做工作负载准入、配额借用和公平排队。</p>
+<h2 id="gang-scheduling">Gang Scheduling</h2>
+<p>分布式训练或多 Pod 推理要求全部成员一起就绪。Gang Scheduling 通过 PodGroup 等概念表达最小可运行成员数：资源不足时整组等待，避免“占一半卡却做不了工作”。</p>
+<h2 id="拓扑感知">拓扑感知</h2>
+<p>“给我 8 张 GPU”信息太少。8 张位于同一 NVLink 域、同一节点、同一机架或跨多个数据中心，性能可能完全不同。现代调度要同时考虑 NUMA、PCIe、NVLink、NIC/Fabric 和故障域。</p>
+<h2 id="gpu-共享">GPU 共享</h2>
+<p>共享方式包括时间切片、MIG 等硬件分区、显存/算力软隔离。调度层必须知道可分配份额，运行时还要提供隔离、计量和健康状态。HAMi 试图把虚拟化、调度和监控组合起来。</p>
+<h2 id="多集群何时有必要">多集群何时有必要</h2>
+<p>单集群容量或故障域无法满足需求，或不同集群拥有不同硬件时，需要跨集群编排。Karmada 管理多集群放置与策略；但跨集群并不自动形成一张低延迟 GPU 网络，训练和推理仍受数据、网络与控制面一致性约束。</p>
+<div class="callout warning"><strong>不要把项目名当层次</strong>项目能力会扩展。判断集成关系时看 CRD、Scheduler Plugin、Controller 和 Driver 的实际调用路径。</div>
+<h2 id="完整案例-32-卡训练为什么占了-20-卡却不运行">完整案例：32 卡训练为什么占了 20 卡却不运行</h2>
+<p>团队提交一个需要 4 个节点、每节点 8 卡的训练任务。若 Pod 逐个进入默认调度，前三个节点的 24 卡可能先被占住，但第四个节点一直凑不齐 8 张符合拓扑的卡，任务无法启动。与此同时，小任务也可能因为剩余资源碎片而排队。</p>
+<p>更合理的链路是：Kueue 先检查团队配额和整组 32 卡是否值得准入；工作负载对象描述 4 个成员的角色；Volcano 或支持 PodGroup 的调度路径执行 Gang Scheduling；DRA 在具体节点上分配满足属性和拓扑的设备。任何一层都不能单独替代其他三层。</p>
+<h2 id="动手练习-20-分钟">动手练习（20 分钟）</h2>
+<div class="exercise"><strong>为需求选组件</strong>把下面需求映射到 DRA、Kueue、Volcano/LWS、Karmada：①指定 80GB GPU 且靠近某 NIC；②两个团队按季度额度排队；③一个副本必须有 1 个 Leader 和 7 个 Worker；④上海集群满时把离线训练放到北京集群。再写出每项解决后仍未解决的一个问题。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考答案</summary><p>①DRA，但不解决团队公平；②Kueue，但不选具体节点；③LWS 描述工作负载、Volcano/调度器负责成组放置，但不保证应用通信正确；④Karmada，但跨地域数据和网络成本仍存在。项目能力会交叠，判断依据是核心 API 和控制路径。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能按设备、准入、成组工作负载、节点调度和多集群分层。</li><li>我能解释为什么 Gang Scheduling 减少“占了资源却不能运行”。</li><li>我不会把跨集群控制面误认为低延迟数据面。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DRA 是新的队列系统</td>
+<td>DRA 聚焦设备资源建模、分配和生命周期。</td>
+</tr>
+<tr>
+<td>Kueue 替代 kube-scheduler</td>
+<td>它主要在调度前做准入与队列管理。</td>
+</tr>
+<tr>
+<td>Gang Scheduling 提升单卡速度</td>
+<td>它减少资源碎片和半组等待，不改变 Kernel 本身。</td>
+</tr>
+<tr>
+<td>多集群等于把多地 GPU 直接拼成一台机器</td>
+<td>控制面可以统一，数据面延迟和带宽仍真实存在。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222146"><strong>9/8 13:45 · LeaderWorkerSet</strong><br>关注 LWS、PodGroup、Volcano/YuniKorn 与 DisaggregatedSet。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223308"><strong>9/9 16:15 · Kubernetes DRA Architecture</strong><br>关注设备状态、拓扑、IMEX 分配与千设备规模延迟。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222060"><strong>9/9 16:15 · Volcano Unified Scheduling</strong><br>与 DRA 同时段冲突；适合关注统一训练/推理/Agent 调度者。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-2/13-45-leaderworkerset.md">LeaderWorkerSet</a> · <a href="../notes/day-3/16-15-kubernetes-dra.md">Kubernetes DRA</a> · <a href="../notes/day-3/16-15-volcano-scheduling.md">Volcano</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>该组件管理的第一等对象是什么？</li>
+<li>调度决策使用哪些拓扑信息，状态由谁更新？</li>
+<li>资源不足、部分故障和抢占时，一组任务如何回滚或恢复？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. Kueue 与 Scheduler 的主要分工？</summary><p>Kueue 先决定工作负载何时按配额准入；Scheduler 再选择具体节点。</p></details>
+<details><summary>2. DRA 相对整数扩展资源的优势？</summary><p>能表达设备属性、Claim、状态、拓扑和更完整生命周期。</p></details>
+<details><summary>3. Gang Scheduling 避免什么浪费？</summary><p>避免只调度到部分成员、占住设备却无法开始工作的资源碎片。</p></details>
+<details><summary>4. LWS 主要描述什么？</summary><p>由 Leader 和 Worker Pod 组成、需要作为整体管理的分布式副本。</p></details>
+<details><summary>5. Karmada 解决跨集群后，网络问题是否消失？</summary><p>不会。它解决控制与放置，物理网络延迟、带宽和数据位置仍要单独处理。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://kubernetes.io/docs/concepts/resource-management/dynamic-resource-allocation/">Kubernetes 1.37 DRA</a></li>
+<li><a href="https://kueue.sigs.k8s.io/">Kueue 0.19</a> · <a href="https://lws.sigs.k8s.io/">LWS 0.10</a> · <a href="https://volcano.sh/en/docs/">Volcano 1.15</a> · <a href="https://karmada.io/docs/">Karmada 1.19</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="07-distributed-inference.html"><small>上一篇</small>分布式推理系统</a><a class="next" href="09-agent-infra.html"><small>下一篇</small>Agent 基础设施</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#先把五个项目放对位置" class="toc-h2">先把五个项目放对位置</a><a href="#从-device-plugin-到-dra" class="toc-h2">从 Device Plugin 到 DRA</a><a href="#队列与准入" class="toc-h2">队列与准入</a><a href="#gang-scheduling" class="toc-h2">Gang Scheduling</a><a href="#拓扑感知" class="toc-h2">拓扑感知</a><a href="#gpu-共享" class="toc-h2">GPU 共享</a><a href="#多集群何时有必要" class="toc-h2">多集群何时有必要</a><a href="#完整案例-32-卡训练为什么占了-20-卡却不运行" class="toc-h2">完整案例：32 卡训练为什么占了 20 卡却不运行</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>K8s 1.37 · Kueue 0.19 · LWS 0.10 · Volcano 1.15 · Karmada 1.19</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

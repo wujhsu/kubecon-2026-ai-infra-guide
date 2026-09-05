@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="理解 vLLM/SGLang、张量并行、PD 分离、缓存感知路由，以及为什么普通 Deployment 和 HPA 会失效。"><meta name="color-scheme" content="light dark">
+  <title>当一个模型副本也成为分布式系统 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/07-distributed-inference.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">推理系统 · 60 分钟</div><h1>当一个模型副本也成为分布式系统</h1><p>理解 vLLM/SGLang、张量并行、PD 分离、缓存感知路由，以及为什么普通 Deployment 和 HPA 会失效。</p><div class="meta"><span>中级</span><span>更新于 2026-09-05</span><span>3 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#vllm-与-sglang-位于哪一层" class="toc-h2">vLLM 与 SGLang 位于哪一层</a><a href="#为什么一个副本需要多张卡" class="toc-h2">为什么一个副本需要多张卡</a><a href="#prefilldecode-分离" class="toc-h2">Prefill–Decode 分离</a><a href="#路由不再只是看连接数" class="toc-h2">路由不再只是看连接数</a><a href="#hpa-为什么可能看错" class="toc-h2">HPA 为什么可能看错</a><a href="#agent-让推理更有状态" class="toc-h2">Agent 让推理更有状态</a><a href="#完整案例-缓存感知路由也会失衡" class="toc-h2">完整案例：缓存感知路由也会失衡</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>能画出一个生产推理平面；理解模型副本为何可能由多 Pod、多 GPU 组成；能说清 PD 分离的收益与新增复杂度。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：推理系统像餐厅。路由器负责领位，Batch Scheduler 负责拼桌，KV Cache 保存熟客点单记录，而 PD 分离把备菜和逐盘出餐交给不同厨房。</p>
+</blockquote>
+<figure class="concept-figure">
+<img src="../assets/concepts/06-distributed-inference-scheduling.webp" width="1536" height="1024" loading="lazy" decoding="async" alt="两组不同规模的推理服务器通过中间缓存块协作，前方路由器按缓存与容量把请求分流，并显示工作池扩缩">
+<figcaption><strong>概念图：两类工作池需要协同调度</strong>Prefill 池吸收宽而密集的输入，Decode 池保持稳定的逐步输出，路由器同时考虑缓存和容量。<span class="look-for">看图时关注：KV 的转移、请求的分流和副本扩缩是三件不同的事。</span></figcaption>
+</figure>
+<h2 id="vllm-与-sglang-位于哪一层">vLLM 与 SGLang 位于哪一层</h2>
+<p>它们是高性能模型服务运行时，负责模型加载、内存管理、请求调度、批处理和生成执行。它们不替代 Kubernetes：前者调度 Token 和 GPU Kernel，后者调度 Pod、节点和设备。</p>
+<h2 id="为什么一个副本需要多张卡">为什么一个副本需要多张卡</h2>
+<p>模型权重可能放不进单卡，或单卡吞吐不够。张量并行把同一层计算切到多卡；流水线并行把不同层放到不同卡。此时“一个服务副本”不再等于一个 Pod。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IExSCiAgICBDW+WuouaIt+err10gLS0+IEdXW0luZmVyZW5jZSBHYXRld2F5XQogICAgR1cgLS0+IFJUW+e8k+WtmC/otJ/ovb3mhJ/nn6UgUm91dGVyXQogICAgUlQgLS0+IFIxW1JlcGxpY2EgMTogNCBQb2RzIC8gOCBHUFVzXQogICAgUlQgLS0+IFIyW1JlcGxpY2EgMjogNCBQb2RzIC8gOCBHUFVzXQogICAgUjEgLS0+IEsxWyhLViBDYWNoZSldCiAgICBSMiAtLT4gSzJbKEtWIENhY2hlKV0K">flowchart LR
+    C[客户端] --&gt; GW[Inference Gateway]
+    GW --&gt; RT[缓存/负载感知 Router]
+    RT --&gt; R1[Replica 1: 4 Pods / 8 GPUs]
+    RT --&gt; R2[Replica 2: 4 Pods / 8 GPUs]
+    R1 --&gt; K1[(KV Cache)]
+    R2 --&gt; K2[(KV Cache)]
+</pre></div><p>如果只调度到一半 Pod，已占用的 GPU 不能对外服务；如果滚动更新时成员版本不一致，通信可能失败。这就是 LeaderWorkerSet 和 Gang Scheduling 要解决的问题。</p>
+<h2 id="prefilldecode-分离">Prefill–Decode 分离</h2>
+<p>Prefill 和 Decode 的硬件行为不同：前者通常计算密集，后者常被显存带宽限制。PD 分离让两类节点独立扩缩、放置和调优，再通过高速网络传输 KV 状态。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="c2VxdWVuY2VEaWFncmFtCiAgICBwYXJ0aWNpcGFudCBHIGFzIEdhdGV3YXkKICAgIHBhcnRpY2lwYW50IFAgYXMgUHJlZmlsbCBQb29sCiAgICBwYXJ0aWNpcGFudCBEIGFzIERlY29kZSBQb29sCiAgICBwYXJ0aWNpcGFudCBDIGFzIENhY2hlL1RyYW5zZmVyCiAgICBHLT4+UDog6ZW/IFByb21wdAogICAgUC0+PkM6IOeUn+aIkOW5tuWPkemAgSBLVgogICAgQy0+PkQ6IEtWIOeKtuaAgQogICAgRy0+PkQ6IOW7uueri+a1geW8j+S8muivnQogICAgbG9vcCDmr4/kuKrovpPlh7ogVG9rZW4KICAgICAgRC0tPj5HOiBUb2tlbgogICAgZW5kCg==">sequenceDiagram
+    participant G as Gateway
+    participant P as Prefill Pool
+    participant D as Decode Pool
+    participant C as Cache/Transfer
+    G-&gt;&gt;P: 长 Prompt
+    P-&gt;&gt;C: 生成并发送 KV
+    C-&gt;&gt;D: KV 状态
+    G-&gt;&gt;D: 建立流式会话
+    loop 每个输出 Token
+      D--&gt;&gt;G: Token
+    end
+</pre></div><p>收益是 P/D 可以使用不同并行度、Batch 和扩缩指标；代价是 KV 传输、会话连续性、故障恢复和跨阶段可观测性更难。</p>
+<h2 id="路由不再只是看连接数">路由不再只是看连接数</h2>
+<p>传统负载均衡常把请求发给连接少的副本。推理路由还要考虑：</p>
+<ul>
+<li>哪个副本已有相同 Prefix Cache；</li>
+<li>当前排队 Token 而非请求数；</li>
+<li>模型、LoRA 和上下文是否已加载；</li>
+<li>会话是否必须回到原 Decode 副本；</li>
+<li>GPU 内存是否足以接纳新的 KV；</li>
+<li>P/D 阶段是否失衡。</li>
+</ul>
+<h2 id="hpa-为什么可能看错">HPA 为什么可能看错</h2>
+<p>CPU 使用率无法代表推理压力，GPU 利用率也可能在请求排队时仍不高。更合适的信号包括等待 Token、KV Cache 占用、TTFT、Decode 并发和每阶段队列。扩容还要考虑加载几十 GB 权重所需时间，不能等延迟爆炸后才启动。</p>
+<p>模型制品的位置会决定扩容速度。镜像里打包权重便于版本固定，却让镜像巨大；启动时从对象存储下载更灵活，却依赖网络和仓库吞吐；节点本地缓存最快，但要防止旧版本和容量挤占。生产 Ready 条件应包含校验和、权重分片完整、通信组建立以及一次最小推理，而不只是端口已监听。</p>
+<h2 id="agent-让推理更有状态">Agent 让推理更有状态</h2>
+<p>Agent 会反复携带相同工具定义和历史，提升 Prefix Cache 价值；同时工具调用让模型连接暂时空闲但会话仍未结束。并行子 Agent 共享前缀，失败后还希望恢复上下文。这要求缓存感知路由、会话亲和和状态恢复共同工作。</p>
+<div class="callout warning"><strong>PD 分离不是默认答案</strong>请求较短、规模较小或网络较慢时，KV 传输与系统复杂度可能超过收益。先证明 P/D 资源特性确实需要独立管理。</div>
+<h2 id="完整案例-缓存感知路由也会失衡">完整案例：缓存感知路由也会失衡</h2>
+<p>三个副本中，副本 A 因为命中热门 20k Token 前缀而不断收到新请求，缓存命中率很好，但 Decode 队列越来越长；B、C 空闲却没有该前缀。只追求缓存命中会牺牲尾延迟，只追求最短队列又会重复 Prefill。</p>
+<p>实用路由要给“预计复用收益”和“预计等待时间”同时计分，并在 KV 快满、模型版本不同或会话绑定时设置硬约束。若 P/D 分离，还要把 KV 传输时间纳入预计成本。<span class="source-badge">教学推导</span>具体权重必须用本系统流量回放或在线实验校准。</p>
+<h2 id="动手练习-20-分钟">动手练习（20 分钟）</h2>
+<div class="exercise"><strong>设计一个路由评分表</strong>给 A、B 两个副本各写四列：等待 Token、前缀命中 Token、KV 剩余容量、模型是否已加载。自拟两组数字，先按“最短队列”选择，再按“命中节省的 Prefill 时间 - 排队时间 - KV 传输时间”选择，观察结果何时不同。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考思路</summary><p>没有唯一公式。关键是把请求数换成 Token 工作量，并把缓存收益和排队成本放到同一时间单位。模型未加载或 KV 容量不足可作为硬性排除条件；会话中的 Decode 通常还需要亲和性。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能区分 Kubernetes 的 Pod 调度与推理引擎的 Token 调度。</li><li>我知道 PD 分离新增了 KV 传输与会话恢复问题。</li><li>我会把模型制品加载时间纳入扩缩容，而不是只看容器启动。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>推理副本就是一个 Pod</td>
+<td>大模型副本可能跨多 Pod、多节点和多 GPU。</td>
+</tr>
+<tr>
+<td>路由只需轮询</td>
+<td>缓存、Token 队列、会话和模型加载状态会显著影响成本。</td>
+</tr>
+<tr>
+<td>PD 分离一定降低 TTFT</td>
+<td>KV 传输、队列和网络不佳时可能变慢。</td>
+</tr>
+<tr>
+<td>GPU 利用率可直接驱动扩容</td>
+<td>它滞后且口径有限，需要和队列、缓存、延迟组合。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224503"><strong>9/8 13:45 · NVIDIA Dynamo on Kubernetes</strong><br>关注缓存争用、部分故障、RBG 与会话连续性。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224671"><strong>9/9 11:00 · Huawei Celia Inference Plane</strong><br>关注 P/D Workload、Router、Autoscaler 和真实流量指标。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1220647"><strong>9/9 16:15 · Why Your TTFT Lies</strong><br>关注 P/D 分阶段诊断与调参动作的对应。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-2/13-45-nvidia-dynamo.md">NVIDIA Dynamo</a> · <a href="../notes/day-3/11-00-celia-inference.md">Celia 推理平面</a> · <a href="../notes/day-3/16-15-ttft-lies.md">TTFT 诊断</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>在什么规模和网络条件下，PD 分离才开始获益？</li>
+<li>Router 依据请求数、Token、缓存还是成本做决策？</li>
+<li>部分副本失败时，KV 和流式会话如何恢复？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. vLLM 与 Kubernetes 调度对象有何不同？</summary><p>vLLM 主要调度请求、Token 和内存块；Kubernetes 调度 Pod、节点和设备。</p></details>
+<details><summary>2. PD 分离的核心动机？</summary><p>Prefill 与 Decode 的资源特征不同，希望独立放置、扩缩和优化。</p></details>
+<details><summary>3. 为什么缓存感知路由能省成本？</summary><p>把共享前缀的请求送到已有相应 KV Cache 的副本，减少重复 Prefill。</p></details>
+<details><summary>4. 普通 Deployment 对多 Pod 副本有什么不足？</summary><p>难以把一组有角色关系的 Pod 作为一个原子副本管理和调度。</p></details>
+<details><summary>5. 为什么 CPU HPA 不适合直接管理 LLM？</summary><p>CPU 与 Token 队列、KV 压力和 GPU 阶段瓶颈相关性弱。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://github.com/vllm-project/vllm/releases/tag/v0.28.0">vLLM v0.28.0</a></li>
+<li><a href="https://github.com/sgl-project/sglang/releases/tag/v0.5.19">SGLang v0.5.19</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="06-llm-inference.html"><small>上一篇</small>LLM 推理基础</a><a class="next" href="08-k8s-ai-scheduling.html"><small>下一篇</small>Kubernetes AI 调度</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#vllm-与-sglang-位于哪一层" class="toc-h2">vLLM 与 SGLang 位于哪一层</a><a href="#为什么一个副本需要多张卡" class="toc-h2">为什么一个副本需要多张卡</a><a href="#prefilldecode-分离" class="toc-h2">Prefill–Decode 分离</a><a href="#路由不再只是看连接数" class="toc-h2">路由不再只是看连接数</a><a href="#hpa-为什么可能看错" class="toc-h2">HPA 为什么可能看错</a><a href="#agent-让推理更有状态" class="toc-h2">Agent 让推理更有状态</a><a href="#完整案例-缓存感知路由也会失衡" class="toc-h2">完整案例：缓存感知路由也会失衡</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>vLLM v0.28.0 · SGLang v0.5.19</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

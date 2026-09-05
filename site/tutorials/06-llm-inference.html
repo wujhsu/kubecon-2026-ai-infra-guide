@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="从 Token、Prefill 和 Decode 出发，理解批处理、KV Cache、TTFT、TPOT 与延迟吞吐权衡。"><meta name="color-scheme" content="light dark">
+  <title>模型怎样一个字一个字回答：LLM 推理基础 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/06-llm-inference.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">推理系统 · 55 分钟</div><h1>模型怎样一个字一个字回答：LLM 推理基础</h1><p>从 Token、Prefill 和 Decode 出发，理解批处理、KV Cache、TTFT、TPOT 与延迟吞吐权衡。</p><div class="meta"><span>入门</span><span>更新于 2026-09-05</span><span>2 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#文本先变成-token" class="toc-h2">文本先变成 Token</a><a href="#prefill-与-decode" class="toc-h2">Prefill 与 Decode</a><a href="#三个指标" class="toc-h2">三个指标</a><a href="#kv-cache-为什么会变大" class="toc-h2">KV Cache 为什么会变大</a><a href="#continuous-batching" class="toc-h2">Continuous Batching</a><a href="#prefix-caching" class="toc-h2">Prefix Caching</a><a href="#模型权重怎样进入-gpu" class="toc-h2">模型权重怎样进入 GPU</a><a href="#完整案例-长文档问答为什么首字慢" class="toc-h2">完整案例：长文档问答为什么首字慢</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>能描述请求从文本到 Token、Prefill、Decode 再到流式响应的过程；会区分 TTFT、TPOT 与吞吐；理解 Continuous Batching 和 KV Cache 为什么是推理系统核心。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：Prefill 像先读完整份材料并做笔记，Decode 像一边看笔记一边逐字写答案；KV Cache 就是那份避免反复重读的笔记。</p>
+</blockquote>
+<figure class="concept-figure">
+<img src="../assets/concepts/05-llm-prefill-decode-kv.webp" width="1536" height="1024" loading="lazy" decoding="async" alt="完整材料一次进入阅读装置，中间抽屉保存上下文块，右侧机器循环逐个生成输出块">
+<figcaption><strong>概念图：先整段阅读，再逐步书写</strong>Prefill 把整段输入并行处理并建立 KV，Decode 每次利用旧 KV 生成一个新 Token。<span class="look-for">看图时关注：左侧是一股宽流，右侧是反馈循环；KV 抽屉在两阶段之间持续增长。</span></figcaption>
+</figure>
+<h2 id="文本先变成-token">文本先变成 Token</h2>
+<p>模型处理的不是汉字或英文单词，而是 Token ID。一个汉字不总等于一个 Token，英文单词也可能被拆开。计费、上下文长度、缓存和输出速度通常都以 Token 为单位。</p>
+<h2 id="prefill-与-decode">Prefill 与 Decode</h2>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="c2VxdWVuY2VEaWFncmFtCiAgICBwYXJ0aWNpcGFudCBDIGFzIOWuouaIt+errwogICAgcGFydGljaXBhbnQgUyBhcyDmjqjnkIbmnI3liqHlmagKICAgIHBhcnRpY2lwYW50IEcgYXMgR1BVCiAgICBDLT4+UzogUHJvbXB0IFRva2VucwogICAgUy0+Pkc6IFByZWZpbGwg5pW05q616L6T5YWlCiAgICBHLS0+PlM6IEtWIENhY2hlICsg6aaW5LiqIFRva2VuCiAgICBTLS0+PkM6IFRURlQg5Yiw6L6+CiAgICBsb29wIOavj+S4quWQjue7rSBUb2tlbgogICAgICBTLT4+RzogRGVjb2RlIOS4gOatpQogICAgICBHLS0+PlM6IOaWsCBUb2tlbiArIOabtOaWsCBDYWNoZQogICAgICBTLS0+PkM6IOa1geW8j+i+k+WHugogICAgZW5kCg==">sequenceDiagram
+    participant C as 客户端
+    participant S as 推理服务器
+    participant G as GPU
+    C-&gt;&gt;S: Prompt Tokens
+    S-&gt;&gt;G: Prefill 整段输入
+    G--&gt;&gt;S: KV Cache + 首个 Token
+    S--&gt;&gt;C: TTFT 到达
+    loop 每个后续 Token
+      S-&gt;&gt;G: Decode 一步
+      G--&gt;&gt;S: 新 Token + 更新 Cache
+      S--&gt;&gt;C: 流式输出
+    end
+</pre></div><p>Prefill 能并行处理大量输入 Token，常更偏计算密集；Decode 每步只生成一个 Token，却反复读取权重与 KV Cache，常更受显存带宽限制。</p>
+<h2 id="三个指标">三个指标</h2>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>定义</th>
+<th>用户感受</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TTFT</td>
+<td>请求开始到第一个 Token</td>
+<td>“多久开始回答”</td>
+</tr>
+<tr>
+<td>TPOT / ITL</td>
+<td>后续 Token 的平均间隔</td>
+<td>“回答是否流畅”</td>
+</tr>
+<tr>
+<td>Throughput</td>
+<td>单位时间系统处理的 Token 或请求</td>
+<td>“整个平台能服务多少人”</td>
+</tr>
+</tbody>
+</table>
+<p>总响应时间可近似为：<code>TTFT + (输出 Token 数 - 1) × TPOT</code>。这是教学近似；网络传输、客户端渲染与排队会让真实情况更复杂。</p>
+<div class="tool-widget" data-latency-demo>
+<strong>延迟组成演示</strong><p>拖动数值，观察首字速度与完整响应时间为何不同。仅作教学估算。</p>
+<div class="tool-grid">
+<label>Prefill + 排队<input name="prefill" type="range" min="100" max="3000" step="100" value="800"><span data-prefill-value></span></label>
+<label>每个输出 Token<input name="decode" type="range" min="10" max="200" step="5" value="45"><span data-decode-value></span></label>
+<label>输出 Token 数<input name="output" type="range" min="10" max="300" step="10" value="100"><span data-output-value></span></label>
+</div>
+<div class="latency-timeline"><span class="timeline-prefill">Prefill</span><span class="timeline-decode">Decode</span></div>
+<div class="tool-result"><span>TTFT <b data-ttft></b></span><strong data-total></strong></div>
+</div>
+<h2 id="kv-cache-为什么会变大">KV Cache 为什么会变大</h2>
+<p>Transformer 的 Attention 需要历史 Token 的 Key 和 Value。若每生成一个 Token 都重算全部历史，成本会不断增加。缓存历史 K/V 后，只计算新 Token 部分。</p>
+<p>KV Cache 大小大致与 <code>层数 × 2(K和V) × KV Heads × Head Dimension × Token 数 × Batch × 每元素字节数</code> 成正比。</p>
+<div class="tool-widget" data-kv-calculator>
+<strong>KV Cache 显存估算器</strong><p>忽略分页、对齐、量化元数据等实现差异，仅帮助形成数量级直觉。</p>
+<div class="tool-grid">
+<label>层数<input name="layers" type="number" min="1" value="32"></label>
+<label>KV Heads<input name="heads" type="number" min="1" value="8"></label>
+<label>Head Dimension<input name="headDim" type="number" min="1" value="128"></label>
+<label>上下文 Tokens<input name="tokens" type="number" min="1" value="8192"></label>
+<label>Batch<input name="batch" type="number" min="1" value="16"></label>
+<label>每元素字节<select name="bytes"><option value="2">2 · FP16/BF16</option><option value="1">1 · 8-bit</option><option value="4">4 · FP32</option></select></label>
+</div>
+<div class="tool-result"><span>估算 KV Cache</span><strong data-kv-result></strong></div>
+</div>
+<h2 id="continuous-batching">Continuous Batching</h2>
+<p>静态 Batch 等整组请求全部结束再换下一组，短请求会被长请求拖住。Continuous Batching 在每个 Decode 步骤后接纳新请求、移除已结束请求，让 GPU 批次持续保持饱满。</p>
+<p>它提高吞吐，但调度器仍要在批次大小、等待时间、显存和公平性之间取舍。大 Batch 可能让 GPU 更忙，却使单个请求排队更久。</p>
+<h2 id="prefix-caching">Prefix Caching</h2>
+<p>多个请求若共享系统提示、长文档或历史前缀，可以复用已计算的 KV Block。Agent 往往反复携带工具定义和长对话，因此命中率可能很高。但缓存也要解决哈希、隔离、淘汰、跨副本路由和 Offload 成本。</p>
+<h2 id="模型权重怎样进入-gpu">模型权重怎样进入 GPU</h2>
+<p>请求能到达之前，服务要先从对象存储、模型仓库或节点缓存读取权重，完成校验、反序列化、量化或格式转换，再把分片放进 CPU/GPU 内存。几十到数百 GB 的权重会让新副本经历明显冷启动。容器“Running”不等于模型“Ready”；健康检查必须等到权重加载、通信组建立和最小推理验证完成。</p>
+<p>节点本地缓存可减少重复下载，但要处理版本、校验和、磁盘容量和淘汰。把权重缓存与 KV Cache 分开：前者跨请求共享、随模型版本变化；后者属于特定上下文，随会话和 Token 增长。</p>
+<div class="callout warning"><strong>高吞吐不等于低延迟</strong>任何性能数字都要问：是单请求还是整机？平均还是 P99？输入和输出各多长？</div>
+<h2 id="完整案例-长文档问答为什么首字慢">完整案例：长文档问答为什么首字慢</h2>
+<p>用户提交 12k Token 文档并要求输出 200 Token。TTFT 包含入口排队、Tokenize、长 Prompt 的 Prefill，也可能包含冷副本加载权重；首字出来后，TPOT 主要由 Decode 批次、显存带宽和 KV 压力决定。若系统提示和文档前缀重复，Prefix Cache 能减少 Prefill，但第一次请求仍要完整计算。</p>
+<p>估算器给出的 KV 是逻辑总量。使用 Tensor Parallel 时，每张卡实际持有的 KV 取决于 KV Head 如何切分；分页、对齐和运行时工作区还会增加显存。因此它是教学模型，不是容量承诺。</p>
+<h2 id="动手练习-20-分钟">动手练习（20 分钟）</h2>
+<div class="exercise"><strong>比较两个请求</strong>在上方工具中分别输入：A 为 2k 上下文、Batch 32；B 为 32k 上下文、Batch 2。记录 KV 估算和总响应时间，再把输出 Token 从 50 增到 250。回答：哪项主要推高 TTFT，哪项主要推高完整响应时间？</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考答案</summary><p>上下文增长主要增加 Prefill 和 KV；Batch 同样直接放大 KV。输出 Token 增加对 TTFT 影响很小，却按 TPOT 累加完整响应时间。生产环境还需加入排队、网络与冷启动，不能把演示数值当 Benchmark。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能分清模型权重、KV Cache 和 Checkpoint。</li><li>我能用 TTFT、TPOT 与输出长度近似完整响应时间。</li><li>我知道 Pod Running 与模型 Ready 之间还有加载和验证阶段。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TTFT 包含整个回答时间</td>
+<td>它只到首个 Token。</td>
+</tr>
+<tr>
+<td>KV Cache 缓存模型权重</td>
+<td>它缓存特定序列的注意力 K/V 状态。</td>
+</tr>
+<tr>
+<td>Batch 越大越好</td>
+<td>可能增加排队、显存压力和尾延迟。</td>
+</tr>
+<tr>
+<td>Tokens/s 可以跨模型直接比较</td>
+<td>Tokenizer、模型、输入输出长度和口径都可能不同。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224671"><strong>9/9 11:00 · Huawei Celia Inference Plane</strong><br>听清 TTFT、吞吐与利用率分别如何变化。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222763"><strong>9/9 15:30 · vLLM KV Cache Management</strong><br>关注 Prefix Cache、CPU Offload、LRU/ARC 与 Agent 场景。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-3/11-00-celia-inference.md">Celia 推理平面</a> · <a href="../notes/day-3/15-30-vllm-kv-cache.md">vLLM KV Cache</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>输入/输出长度、Batch 与并发是多少？</li>
+<li>报告的是平均值还是 P95/P99？是否包含排队和网络？</li>
+<li>缓存命中后节省计算，却增加了多少容量与传输成本？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. Prefill 做什么？</summary><p>并行处理输入上下文，建立 KV Cache，并产生第一个输出所需状态。</p></details>
+<details><summary>2. TTFT 与 TPOT 的用户感受分别是什么？</summary><p>TTFT 决定多久开始回答；TPOT 决定后续文字流是否顺畅。</p></details>
+<details><summary>3. KV Cache 为什么能加速 Decode？</summary><p>保存历史 Token 的注意力 K/V，避免每一步重算全部历史。</p></details>
+<details><summary>4. Continuous Batching 与静态 Batch 的区别？</summary><p>它能在 Decode 步之间动态加入新请求、移除已完成请求。</p></details>
+<details><summary>5. 为什么吞吐和延迟可能冲突？</summary><p>为了让 GPU 批次更满而等待更多请求，会提高整体吞吐但增加单请求排队。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://docs.vllm.ai/en/latest/">vLLM v0.28.0 Documentation</a></li>
+<li><a href="https://docs.sglang.ai/">SGLang v0.5.19 Documentation</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="05-gpu-communication.html"><small>上一篇</small>GPU 通信与 NCCL</a><a class="next" href="07-distributed-inference.html"><small>下一篇</small>分布式推理系统</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#文本先变成-token" class="toc-h2">文本先变成 Token</a><a href="#prefill-与-decode" class="toc-h2">Prefill 与 Decode</a><a href="#三个指标" class="toc-h2">三个指标</a><a href="#kv-cache-为什么会变大" class="toc-h2">KV Cache 为什么会变大</a><a href="#continuous-batching" class="toc-h2">Continuous Batching</a><a href="#prefix-caching" class="toc-h2">Prefix Caching</a><a href="#模型权重怎样进入-gpu" class="toc-h2">模型权重怎样进入 GPU</a><a href="#完整案例-长文档问答为什么首字慢" class="toc-h2">完整案例：长文档问答为什么首字慢</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>通用推理概念</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

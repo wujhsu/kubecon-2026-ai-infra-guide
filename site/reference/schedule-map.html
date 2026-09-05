@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="按时间列出推荐场次、预习章节和现场应重点捕捉的问题。"><meta name="color-scheme" content="light dark">
+  <title>三天议程与教程映射 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="reference/schedule-map.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link is-active" href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">现场导航 · 20 分钟</div><h1>三天议程与教程映射</h1><p>按时间列出推荐场次、预习章节和现场应重点捕捉的问题。</p><div class="meta"><span>必看</span><span>更新于 2026-09-05</span><span>0 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#使用说明" class="toc-h2">使用说明</a><a href="#主选路线-14-场" class="toc-h2">主选路线（14 场）</a><a href="#同时段备选-10-场" class="toc-h2">同时段备选（10 场）</a><a href="#冲突矩阵" class="toc-h2">冲突矩阵</a></nav></details>
+      <div class="prose"><h2 id="使用说明">使用说明</h2>
+<p>以下是制作日的议程快照。开会前一天应再次查看 <a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/">Sessionize 实时议程</a>，确认时间和会场是否变化。</p>
+<h2 id="主选路线-14-场">主选路线（14 场）</h2>
+<p>表中的场次标题链接 Sessionize，需要联网；教程与笔记均可离线打开。语言是官方议程字段，9 月 7 日联合活动未标注语言。</p>
+<table>
+<thead>
+<tr>
+<th>日期</th>
+<th>时间</th>
+<th style="text-align:right">时长</th>
+<th>会场</th>
+<th>语言</th>
+<th>场次</th>
+<th>教程</th>
+<th>笔记</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>9/7</td>
+<td>14:00–16:00</td>
+<td style="text-align:right">120m</td>
+<td>Pearl Hall</td>
+<td>未标注</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1312719">Hardware-Aware AI</a></td>
+<td><a href="../tutorials/01-ai-hardware.html">02 AI 计算硬件</a>、<a href="../tutorials/03-pytorch-stack.html">04 PyTorch 技术栈</a></td>
+<td><a href="../notes/day-1/14-00-hardware-aware-ai.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>11:00–11:30</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall I</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1225136">8 Million Tasks Daily</a></td>
+<td><a href="../tutorials/02-kubernetes-basics.html">03 Kubernetes 基础</a>、<a href="../tutorials/08-k8s-ai-scheduling.html">09 AI 调度</a></td>
+<td><a href="../notes/day-2/11-00-eight-million-tasks.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>11:45–12:15</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall I</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1225364">Scaling Digital Employees at CMB</a></td>
+<td><a href="../tutorials/09-agent-infra.html">10 Agent 基础设施</a>、<a href="../tutorials/10-security-multitenancy.html">11 安全与多租户</a></td>
+<td><a href="../notes/day-2/11-45-digital-employees.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>13:45–14:15</td>
+<td style="text-align:right">30m</td>
+<td>5B + C</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222146">LeaderWorkerSet 与分离式推理</a></td>
+<td><a href="../tutorials/07-distributed-inference.html">08 分布式推理</a>、<a href="../tutorials/08-k8s-ai-scheduling.html">09 AI 调度</a></td>
+<td><a href="../notes/day-2/13-45-leaderworkerset.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>14:30–15:00</td>
+<td style="text-align:right">30m</td>
+<td>Grand Ballroom II + III</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1221808">HAMi GPU Virtualization</a></td>
+<td><a href="../tutorials/01-ai-hardware.html">02 AI 计算硬件</a>、<a href="../tutorials/08-k8s-ai-scheduling.html">09 AI 调度</a></td>
+<td><a href="../notes/day-2/14-30-hami.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>15:30–16:00</td>
+<td style="text-align:right">30m</td>
+<td>Grand Ballroom II + III</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1209151">KernelAgent</a></td>
+<td><a href="../tutorials/03-pytorch-stack.html">04 PyTorch 技术栈</a></td>
+<td><a href="../notes/day-2/15-30-kernel-agent.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>16:15–16:45</td>
+<td style="text-align:right">30m</td>
+<td>5B + C</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1219807">Argo Workflows for AI</a></td>
+<td><a href="../tutorials/02-kubernetes-basics.html">03 Kubernetes 基础</a>、<a href="../tutorials/09-agent-infra.html">10 Agent 基础设施</a></td>
+<td><a href="../notes/day-2/16-15-argo-ai.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>17:00–17:30</td>
+<td style="text-align:right">30m</td>
+<td>Grand Ballroom II + III</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224575">Serverless Training-as-a-Service</a></td>
+<td><a href="../tutorials/04-distributed-training.html">05 分布式训练</a></td>
+<td><a href="../notes/day-2/17-00-training-as-a-service.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>11:00–11:30</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall I</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224671">Huawei Celia 推理平面</a></td>
+<td><a href="../tutorials/06-llm-inference.html">07 LLM 推理基础</a>、<a href="../tutorials/07-distributed-inference.html">08 分布式推理</a></td>
+<td><a href="../notes/day-3/11-00-celia-inference.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>11:45–12:15</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall I</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223450">Meta 100k-GPU 训练容错</a></td>
+<td><a href="../tutorials/04-distributed-training.html">05 分布式训练</a>、<a href="../tutorials/05-gpu-communication.html">06 GPU 通信</a>、<a href="../tutorials/11-observability-reliability.html">12 可靠性</a></td>
+<td><a href="../notes/day-3/11-45-meta-fault-tolerance.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>13:45–14:15</td>
+<td style="text-align:right">30m</td>
+<td>Grand Ballroom II + III</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223545">Tiered KVCache for Agents</a></td>
+<td><a href="../tutorials/06-llm-inference.html">07 LLM 推理基础</a>、<a href="../tutorials/07-distributed-inference.html">08 分布式推理</a></td>
+<td><a href="../notes/day-3/13-45-tiered-kv-cache.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>14:30–15:00</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall II</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223860">End-to-End Observability</a></td>
+<td><a href="../tutorials/06-llm-inference.html">07 LLM 推理基础</a>、<a href="../tutorials/11-observability-reliability.html">12 可观测性与可靠性</a></td>
+<td><a href="../notes/day-3/14-30-inference-observability.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>15:30–16:00</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall I</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222763">vLLM KV Cache Management</a></td>
+<td><a href="../tutorials/06-llm-inference.html">07 LLM 推理基础</a>、<a href="../tutorials/07-distributed-inference.html">08 分布式推理</a></td>
+<td><a href="../notes/day-3/15-30-vllm-kv-cache.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>16:15–16:45</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall II</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1220647">Why Your TTFT Lies</a></td>
+<td><a href="../tutorials/07-distributed-inference.html">08 分布式推理</a>、<a href="../tutorials/11-observability-reliability.html">12 可观测性与可靠性</a></td>
+<td><a href="../notes/day-3/16-15-ttft-lies.md">打开</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="同时段备选-10-场">同时段备选（10 场）</h2>
+<table>
+<thead>
+<tr>
+<th>日期</th>
+<th>时间</th>
+<th style="text-align:right">时长</th>
+<th>会场</th>
+<th>语言</th>
+<th>备选场次</th>
+<th>教程</th>
+<th>笔记</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>9/8</td>
+<td>13:45–15:00</td>
+<td style="text-align:right">75m</td>
+<td>Pearl Hall</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224567">Advanced NCCL Tutorial</a></td>
+<td><a href="../tutorials/05-gpu-communication.html">06 GPU 通信</a></td>
+<td><a href="../notes/day-2/13-45-advanced-nccl.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>13:45–14:15</td>
+<td style="text-align:right">30m</td>
+<td>Grand Ballroom II + III</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224503">NVIDIA Dynamo on Kubernetes</a></td>
+<td><a href="../tutorials/07-distributed-inference.html">08 分布式推理</a></td>
+<td><a href="../notes/day-2/13-45-nvidia-dynamo.md">打开</a></td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>13:45–14:15</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall I</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1177779">Secure Agentic Workflows</a></td>
+<td><a href="../tutorials/09-agent-infra.html">10 Agent 基础设施</a>、<a href="../tutorials/10-security-multitenancy.html">11 安全</a></td>
+<td><a href="../notes/day-2/13-45-secure-agentic-workflows.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>11:00–11:30</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall II</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224844">Pathless runc Security</a></td>
+<td><a href="../tutorials/10-security-multitenancy.html">11 安全与多租户</a></td>
+<td><a href="../notes/day-3/11-00-pathless-runc.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>14:30–15:00</td>
+<td style="text-align:right">30m</td>
+<td>Mandarin Hall I</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222557">veRL for Ultra-Large MoE</a></td>
+<td><a href="../tutorials/04-distributed-training.html">05 分布式训练</a></td>
+<td><a href="../notes/day-3/14-30-verl-moe.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>14:30–15:00</td>
+<td style="text-align:right">30m</td>
+<td>Pearl Hall</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1220661">Kata Containers for the Agent Era</a></td>
+<td><a href="../tutorials/10-security-multitenancy.html">11 安全与多租户</a></td>
+<td><a href="../notes/day-3/14-30-kata-agent-sandbox.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>15:30–16:00</td>
+<td style="text-align:right">30m</td>
+<td>Pearl Hall</td>
+<td>English</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222331">PyTorch Generalization Journey</a></td>
+<td><a href="../tutorials/03-pytorch-stack.html">04 PyTorch 技术栈</a></td>
+<td><a href="../notes/day-3/15-30-pytorch-generalization.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>16:15–16:45</td>
+<td style="text-align:right">30m</td>
+<td>Pearl Hall</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223308">Kubernetes DRA Architecture</a></td>
+<td><a href="../tutorials/08-k8s-ai-scheduling.html">09 AI 调度</a></td>
+<td><a href="../notes/day-3/16-15-kubernetes-dra.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>16:15–16:45</td>
+<td style="text-align:right">30m</td>
+<td>5B + C</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222060">Volcano Unified Scheduling</a></td>
+<td><a href="../tutorials/08-k8s-ai-scheduling.html">09 AI 调度</a></td>
+<td><a href="../notes/day-3/16-15-volcano-scheduling.md">打开</a></td>
+</tr>
+<tr>
+<td>9/9</td>
+<td>16:15–16:45</td>
+<td style="text-align:right">30m</td>
+<td>Grand Ballroom II + III</td>
+<td>中文</td>
+<td><a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1218010">Securing AI Agents at Scale</a></td>
+<td><a href="../tutorials/09-agent-infra.html">10 Agent 基础设施</a>、<a href="../tutorials/10-security-multitenancy.html">11 安全</a></td>
+<td><a href="../notes/day-3/16-15-securing-ai-agents.md">打开</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="冲突矩阵">冲突矩阵</h2>
+<table>
+<thead>
+<tr>
+<th>时间段</th>
+<th>主选</th>
+<th>备选</th>
+<th>如何决定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>9/8 13:45</td>
+<td>LWS</td>
+<td>NCCL / Dynamo / Secure Agentic Workflows</td>
+<td>想学平台抽象选 LWS；性能通信选 NCCL；推理运行时选 Dynamo；安全治理选 Agent 工作流。NCCL 持续到 15:00，也会覆盖 HAMi。</td>
+</tr>
+<tr>
+<td>9/9 11:00</td>
+<td>Celia 推理平面</td>
+<td>Pathless runc</td>
+<td>做推理平台选 Celia；负责容器运行时安全选 runc。</td>
+</tr>
+<tr>
+<td>9/9 14:30</td>
+<td>推理可观测性</td>
+<td>veRL / Kata</td>
+<td>线上诊断选可观测性；训练并行选 veRL；不可信代码隔离选 Kata。</td>
+</tr>
+<tr>
+<td>9/9 15:30</td>
+<td>vLLM KV Cache</td>
+<td>PyTorch Generalization</td>
+<td>推理性能选 vLLM；跨加速器框架开发选 PyTorch。</td>
+</tr>
+<tr>
+<td>9/9 16:15</td>
+<td>TTFT 诊断</td>
+<td>DRA / Volcano / Agent Security</td>
+<td>推理诊断选 TTFT；设备 API 选 DRA；统一调度选 Volcano；多租户 Agent 风险选安全场。</td>
+</tr>
+</tbody>
+</table>
+<div class="callout warning"><strong>议程冻结基线：2026-09-05</strong>以上 24 场的时间、会场、语言和 Sessionize ID 已在制作日重新读取官方议程。外部链接现场仍需联网，议程可能临时调整。</div>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="glossary.html"><small>上一篇</small>术语表</a><a class="next" href="field-cheatsheet.html"><small>下一篇</small>会场速查</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#使用说明" class="toc-h2">使用说明</a><a href="#主选路线-14-场" class="toc-h2">主选路线（14 场）</a><a href="#同时段备选-10-场" class="toc-h2">同时段备选（10 场）</a><a href="#冲突矩阵" class="toc-h2">冲突矩阵</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>持续更新</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

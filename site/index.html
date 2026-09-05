@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="KubeCon China 2026 AI Infra 初学者预习站"><meta name="color-scheme" content="light dark">
+  <title>首页 · AI Infra Field Guide</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="" data-page="" class="home-page">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="home-wrap">
+    <section class="home-intro"><div><p class="eyebrow">2026.09.07–09 · 上海</p><h1>把论坛术语连成<br>一套 AI Infra 知识地图</h1><p class="lead">从一条请求如何抵达 GPU 开始，依次理解 PyTorch、分布式训练、推理、调度、Agent、安全与可观测性。</p></div>
+      <div class="route-map" aria-label="学习路径"><span>请求</span><i></i><span>运行时</span><i></i><span>调度</span><i></i><span>GPU</span><i></i><span>指标</span></div>
+    </section>
+    <section class="status-strip" aria-label="课程概况"><div><strong>12</strong><span>篇递进教程</span></div><div><strong>10h</strong><span>预计预习时间</span></div><div><strong>离线</strong><span>无需会场网络</span></div><div><strong>2026-09-05</strong><span>资料核对日期</span></div></section>
+    <section class="start-panel"><div><p class="eyebrow">从这里开始</p><h2>先建立全链路，再逐层下钻</h2><p>不要急着背项目名。先能回答“这个组件解决哪一层的问题”，论坛上的内容就会自动归位。</p></div><a class="primary-link" href="tutorials/00-learning-map.html">开始第 1 篇 <span aria-hidden="true">→</span></a></section>
+    <section class="curriculum"><div class="section-head"><div><p class="eyebrow">8–12 小时学习路径</p><h2>十二个知识台阶</h2></div><a href="reference/schedule-map.html">查看议程映射</a></div><div class="course-list"><a class="course-row" href="tutorials/00-learning-map.html"><span class="course-number">01</span><span class="course-copy"><strong>AI Infra 学习地图</strong><small>先把网关、调度、推理引擎、GPU 与指标放到同一张地图上，再学习每一层。</small></span><span class="course-meta">35 分钟<br>入门</span></a><a class="course-row" href="tutorials/01-ai-hardware.html"><span class="course-number">02</span><span class="course-copy"><strong>AI 计算硬件</strong><small>用厨房和搬运的类比理解算力、显存、带宽、并行度，以及为什么不同 AI 任务会卡在不同地方。</small></span><span class="course-meta">45 分钟<br>入门</span></a><a class="course-row" href="tutorials/02-kubernetes-basics.html"><span class="course-number">03</span><span class="course-copy"><strong>Kubernetes 基础</strong><small>从声明式 API、控制循环和调度过程出发，理解 Pod 为什么只是起点，而不是 AI 平台本身。</small></span><span class="course-meta">50 分钟<br>入门</span></a><a class="course-row" href="tutorials/03-pytorch-stack.html"><span class="course-number">04</span><span class="course-copy"><strong>PyTorch 技术栈</strong><small>拆开 PyTorch 的自动微分、编译器、算子、Kernel 和设备抽象，理解性能优化发生在哪一层。</small></span><span class="course-meta">55 分钟<br>入门 → 中级</span></a><a class="course-row" href="tutorials/04-distributed-training.html"><span class="course-number">05</span><span class="course-copy"><strong>分布式训练</strong><small>用搬书和流水线理解数据、张量、流水线、专家并行，以及 FSDP、Megatron、MoE 各自在切什么。</small></span><span class="course-meta">55 分钟<br>中级</span></a><a class="course-row" href="tutorials/05-gpu-communication.html"><span class="course-number">06</span><span class="course-copy"><strong>GPU 通信与 NCCL</strong><small>理解 AllReduce、AllGather、ReduceScatter、Ring/Tree，以及 NVLink、RDMA 和拓扑怎样决定分布式效率。</small></span><span class="course-meta">50 分钟<br>中级</span></a><a class="course-row" href="tutorials/06-llm-inference.html"><span class="course-number">07</span><span class="course-copy"><strong>LLM 推理基础</strong><small>从 Token、Prefill 和 Decode 出发，理解批处理、KV Cache、TTFT、TPOT 与延迟吞吐权衡。</small></span><span class="course-meta">55 分钟<br>入门</span></a><a class="course-row" href="tutorials/07-distributed-inference.html"><span class="course-number">08</span><span class="course-copy"><strong>分布式推理系统</strong><small>理解 vLLM/SGLang、张量并行、PD 分离、缓存感知路由，以及为什么普通 Deployment 和 HPA 会失效。</small></span><span class="course-meta">60 分钟<br>中级</span></a><a class="course-row" href="tutorials/08-k8s-ai-scheduling.html"><span class="course-number">09</span><span class="course-copy"><strong>Kubernetes AI 调度</strong><small>从设备发现到队列、成组调度、拓扑与多集群，建立 DRA、Kueue、Volcano、LWS、Karmada 的分工地图。</small></span><span class="course-meta">65 分钟<br>中级</span></a><a class="course-row" href="tutorials/09-agent-infra.html"><span class="course-number">10</span><span class="course-copy"><strong>Agent 基础设施</strong><small>从模型循环、工具协议、工作流和记忆出发，理解生产 Agent 为什么需要新的运行时与隔离能力。</small></span><span class="course-meta">45 分钟<br>入门 → 中级</span></a><a class="course-row" href="tutorials/10-security-multitenancy.html"><span class="course-number">11</span><span class="course-copy"><strong>安全与多租户</strong><small>把身份、授权、网络、运行时和审计组合成纵深防御，理解 Kata 与机密容器解决的是哪一层。</small></span><span class="course-meta">45 分钟<br>中级</span></a><a class="course-row" href="tutorials/11-observability-reliability.html"><span class="course-number">12</span><span class="course-copy"><strong>可观测性与可靠性</strong><small>把网关、引擎、KV Cache、GPU 与网络指标串成因果链，并理解训练与推理的不同恢复策略。</small></span><span class="course-meta">55 分钟<br>中级</span></a></div></section>
+    <section class="offline-note"><strong>现场笔记已经准备好</strong><p>按日期和推荐场次组织在 <code>notes/</code>，可直接用 Obsidian、Typora 或任意文本编辑器填写。</p><a href="reference/field-cheatsheet.html">打开会场速查页</a></section>
+  </main></div></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="assets/search-index.js"></script>
+  <script src="assets/glossary-index.js"></script>
+  <script src="assets/mermaid.min.js"></script>
+  <script src="assets/app.js"></script>
+</body></html>

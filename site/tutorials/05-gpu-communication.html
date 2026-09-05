@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="理解 AllReduce、AllGather、ReduceScatter、Ring/Tree，以及 NVLink、RDMA 和拓扑怎样决定分布式效率。"><meta name="color-scheme" content="light dark">
+  <title>GPU 之间怎样说话：Collective、NCCL 与网络拓扑 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/05-gpu-communication.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">通信与性能 · 50 分钟</div><h1>GPU 之间怎样说话：Collective、NCCL 与网络拓扑</h1><p>理解 AllReduce、AllGather、ReduceScatter、Ring/Tree，以及 NVLink、RDMA 和拓扑怎样决定分布式效率。</p><div class="meta"><span>中级</span><span>更新于 2026-09-05</span><span>2 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#四种高频-collective" class="toc-h2">四种高频 Collective</a><a href="#ring-与-tree" class="toc-h2">Ring 与 Tree</a><a href="#通信路径有多层" class="toc-h2">通信路径有多层</a><a href="#nccl-在做什么" class="toc-h2">NCCL 在做什么</a><a href="#为什么会死锁" class="toc-h2">为什么会死锁</a><a href="#完整案例-为什么-8-卡正常-16-卡变慢" class="toc-h2">完整案例：为什么 8 卡正常、16 卡变慢</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>能用自己的话解释四种常见 Collective；能看懂单机与跨机拓扑；知道 NCCL 是通信软件而不是网卡；理解为什么通信域故障会让整个训练挂起。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：Collective 像多人协作整理表格，不同操作规定“每个人手里最后应得到什么”；NCCL 负责选择传递顺序和路径。</p>
+</blockquote>
+<h2 id="四种高频-collective">四种高频 Collective</h2>
+<p>假设四张 GPU 各持有一块数据：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>结束后每张卡拥有什么</th>
+<th>常见用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Broadcast</td>
+<td>都得到某一张卡的同一份数据</td>
+<td>发布初始参数</td>
+</tr>
+<tr>
+<td>AllReduce</td>
+<td>各卡数据求和/平均后，每张卡都有完整结果</td>
+<td>数据并行同步梯度</td>
+</tr>
+<tr>
+<td>AllGather</td>
+<td>每张卡收集所有卡的不同分片</td>
+<td>FSDP 临时重建参数</td>
+</tr>
+<tr>
+<td>ReduceScatter</td>
+<td>先归约，再把结果切分给各卡</td>
+<td>FSDP 梯度归约与切分</td>
+</tr>
+</tbody>
+</table>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IExSCiAgICBBMFtBOiAxXSAtLT4gUltBbGxSZWR1Y2Ug5rGC5ZKMXQogICAgQTFbQjogMl0gLS0+IFIKICAgIEEyW0M6IDNdIC0tPiBSCiAgICBBM1tEOiA0XSAtLT4gUgogICAgUiAtLT4gQjBbQTogMTBdCiAgICBSIC0tPiBCMVtCOiAxMF0KICAgIFIgLS0+IEIyW0M6IDEwXQogICAgUiAtLT4gQjNbRDogMTBdCg==">flowchart LR
+    A0[A: 1] --&gt; R[AllReduce 求和]
+    A1[B: 2] --&gt; R
+    A2[C: 3] --&gt; R
+    A3[D: 4] --&gt; R
+    R --&gt; B0[A: 10]
+    R --&gt; B1[B: 10]
+    R --&gt; B2[C: 10]
+    R --&gt; B3[D: 10]
+</pre></div><h2 id="ring-与-tree">Ring 与 Tree</h2>
+<p>Ring AllReduce 让每张卡只与相邻卡交换数据，链路利用较均匀，适合大消息；Tree 用树形聚合与广播，步骤更少，常对小消息延迟有利。实际 NCCL 会根据拓扑、消息大小和硬件选择协议与算法，不能简单说哪一种永远更快。</p>
+<h2 id="通信路径有多层">通信路径有多层</h2>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IExSCiAgICBzdWJncmFwaCBIb3N0MVvmnI3liqHlmaggMV0KICAgICAgRzBbR1BVIDBdIC0tLXxOVkxpbmt8IEcxW0dQVSAxXQogICAgICBHMSAtLS18UENJZXwgTjFbTklDXQogICAgZW5kCiAgICBzdWJncmFwaCBIb3N0MlvmnI3liqHlmaggMl0KICAgICAgTjJbTklDXSAtLS18UENJZXwgRzJbR1BVIDJdCiAgICAgIEcyIC0tLXxOVkxpbmt8IEczW0dQVSAzXQogICAgZW5kCiAgICBOMSA9PT18SW5maW5pQmFuZCAvIFJvQ0UgKyBSRE1BfCBOMgo=">flowchart LR
+    subgraph Host1[服务器 1]
+      G0[GPU 0] ---|NVLink| G1[GPU 1]
+      G1 ---|PCIe| N1[NIC]
+    end
+    subgraph Host2[服务器 2]
+      N2[NIC] ---|PCIe| G2[GPU 2]
+      G2 ---|NVLink| G3[GPU 3]
+    end
+    N1 ===|InfiniBand / RoCE + RDMA| N2
+</pre></div><p>NVLink 是 GPU 间高速互联；PCIe 连接设备与主机；InfiniBand/RoCE 是跨机网络；RDMA 是允许远端直接访问内存、减少 CPU 搬运的能力。GPUDirect RDMA 进一步减少 GPU 数据绕经主机内存的成本。</p>
+<h2 id="nccl-在做什么">NCCL 在做什么</h2>
+<p>NCCL 提供集合通信 API，并发现 GPU、PCIe、NIC 和网络拓扑，选择 Channel、路径、协议与算法。它可以利用 NVLink、共享内存和网络插件，但不会凭空创造带宽。</p>
+<p><span class="source-badge">官方文档</span>NCCL 2.31.2 是本教程制作时的官方文档版本。论坛会涉及 symmetric memory、GPU-initiated networking，以及 <code>ncclCommShrink</code>、<code>ncclCommGrow</code>、<code>ncclCommRevoke</code> 等较新容错能力。理解时应区分“API 已出现”“框架已接入”和“生产环境已验证”三个阶段。</p>
+<h2 id="为什么会死锁">为什么会死锁</h2>
+<p>Collective 要求通信组内进程按兼容顺序共同参与。如果某个 rank 崩溃、走入不同分支或卡在别的操作，其余 rank 可能永远等待。容错 API 的目标之一，是撤销旧通信域并安全形成新的成员集合，而不是让健康进程无限挂起。</p>
+<div class="callout"><strong>通信优化的第一张图是拓扑图</strong>先画清 GPU、NUMA、PCIe Switch 和 NIC 的连接，再讨论算法。只看“网络是 400G”远远不够。</div>
+<h2 id="完整案例-为什么-8-卡正常-16-卡变慢">完整案例：为什么 8 卡正常、16 卡变慢</h2>
+<p>一个 AllReduce 基准在单机 8 卡表现正常，扩到两台 16 卡后效率骤降。不要先怪 NCCL。把路径分段：GPU 到 PCIe Switch、到 NIC、跨机 Fabric、再到另一端 GPU。若同一节点的两块 NIC 分属不同 NUMA 域，而进程和 GPU 被放在远端路径上，数据会绕路；若所有 Job 共用同一上行链路，还会出现争用。</p>
+<p>消息大小也会改变结论。小消息更受固定延迟影响，大消息更接近带宽上限。Ring 和 Tree 的优劣必须在目标消息分布和真实拓扑上测量。</p>
+<h2 id="动手练习-15-分钟">动手练习（15 分钟）</h2>
+<div class="exercise"><strong>手算一个 Ring 直觉</strong>4 个 rank 各有 120 MB 梯度。先把它想象成 4 份，在 ReduceScatter 和 AllGather 两阶段沿环传递。无需背公式：数一数每个 rank 最终必须发送多少个“数据份”，再写出为什么链路带宽、而非全网带宽总和，决定完成时间。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考答案</summary><p>Ring 中每阶段每个 rank 发送 3 个分片，两阶段共 6 个 30 MB 分片，即约 180 MB；常写成总数据量的 `2 × (N-1)/N`。这只是理想算法流量，不含协议开销和争用。环上最慢或被争用的链路会拖住整体。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能描述 AllReduce、AllGather 和 ReduceScatter 的最终数据分布。</li><li>我能区分 NVLink、PCIe、RDMA 与 NCCL 的层次。</li><li>我知道正确的容错 API 名称是 ncclCommShrink、ncclCommGrow 和 ncclCommRevoke。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NCCL 只用于训练</td>
+<td>推理中的张量并行、专家路由和 PD 传输也可能依赖通信。</td>
+</tr>
+<tr>
+<td>带宽相同，通信时间就相同</td>
+<td>延迟、拓扑、争用、协议与消息大小都会改变结果。</td>
+</tr>
+<tr>
+<td>AllReduce 是把数据集中到一张卡</td>
+<td>它归约后让所有参与者都得到结果。</td>
+</tr>
+<tr>
+<td>网络慢就只能升级网卡</td>
+<td>还可以调整放置、并行策略、分片大小和计算通信重叠。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224567"><strong>9/8 13:45 · Advanced NCCL Tutorial</strong><br>内容包含 symmetric memory、GIN 与 DeepEP v2；要求已有 NCCL 基础。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223450"><strong>9/9 11:45 · Meta 100k-GPU Fault Tolerance</strong><br>观察通信组如何缩减、扩展和撤销而不死锁。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-2/13-45-advanced-nccl.md">Advanced NCCL</a> · <a href="../notes/day-3/11-45-meta-fault-tolerance.md">Meta 训练容错</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>通信发生在机内还是跨机，消息大小大约多少？</li>
+<li>算法是否利用具体拓扑，拓扑变化后会怎样？</li>
+<li>容错是让任务继续、快速重启，还是只更快地发现失败？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. AllReduce 后谁得到归约结果？</summary><p>通信组中的每个参与者都得到完整归约结果。</p></details>
+<details><summary>2. ReduceScatter 与 AllGather 的关系？</summary><p>前者归约后分散结果，后者收集各分片；FSDP 常把它们用于不同阶段。</p></details>
+<details><summary>3. NVLink 和 RDMA 是同一类东西吗？</summary><p>不是。NVLink 是设备互联；RDMA 是远端内存直接访问机制，通常运行于跨机网络。</p></details>
+<details><summary>4. Ring 是否永远优于 Tree？</summary><p>不是，选择取决于消息大小、延迟、拓扑和硬件。</p></details>
+<details><summary>5. Collective 为什么容易因单进程故障而挂起？</summary><p>其他成员仍等待它参与约定的通信步骤，通信域必须感知并处理成员变化。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/">NCCL 2.31.2 User Guide</a></li>
+<li><a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html">NCCL Collective Operations</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="04-distributed-training.html"><small>上一篇</small>分布式训练</a><a class="next" href="06-llm-inference.html"><small>下一篇</small>LLM 推理基础</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#四种高频-collective" class="toc-h2">四种高频 Collective</a><a href="#ring-与-tree" class="toc-h2">Ring 与 Tree</a><a href="#通信路径有多层" class="toc-h2">通信路径有多层</a><a href="#nccl-在做什么" class="toc-h2">NCCL 在做什么</a><a href="#为什么会死锁" class="toc-h2">为什么会死锁</a><a href="#完整案例-为什么-8-卡正常-16-卡变慢" class="toc-h2">完整案例：为什么 8 卡正常、16 卡变慢</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>NCCL 2.31.2</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

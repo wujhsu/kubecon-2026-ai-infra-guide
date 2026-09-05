@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="把网关、引擎、KV Cache、GPU 与网络指标串成因果链，并理解训练与推理的不同恢复策略。"><meta name="color-scheme" content="light dark">
+  <title>从慢到为什么慢：可观测性、故障与恢复 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/11-observability-reliability.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">生产治理 · 55 分钟</div><h1>从慢到为什么慢：可观测性、故障与恢复</h1><p>把网关、引擎、KV Cache、GPU 与网络指标串成因果链，并理解训练与推理的不同恢复策略。</p><div class="meta"><span>中级</span><span>更新于 2026-09-05</span><span>3 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#四类信号" class="toc-h2">四类信号</a><a href="#一次慢请求的因果链" class="toc-h2">一次慢请求的因果链</a><a href="#经典-red-use-为什么不够" class="toc-h2">经典 RED/USE 为什么不够</a><a href="#三种常见假象" class="toc-h2">三种常见假象</a><a href="#gpu-很忙-但用户仍然慢" class="toc-h3">GPU 很忙，但用户仍然慢</a><a href="#gpu-不忙-但请求在排队" class="toc-h3">GPU 不忙，但请求在排队</a><a href="#平均-ttft-正常-但投诉增加" class="toc-h3">平均 TTFT 正常，但投诉增加</a><a href="#pd-分离需要分阶段观测" class="toc-h2">PD 分离需要分阶段观测</a><a href="#可靠性-训练与推理不同" class="toc-h2">可靠性：训练与推理不同</a><a href="#完整案例-gpu-看起来正常-p99-却翻倍" class="toc-h2">完整案例：GPU 看起来正常，P99 却翻倍</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>区分 Metrics、Logs、Traces 和 Profiles；能从 TTFT/TPOT 异常向下定位排队、缓存、GPU 或网络；理解训练 Checkpoint 与在线推理恢复的差异。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：监控像汽车仪表盘，只告诉你“水温高”；可观测性还要能沿着一次行程回放，判断是堵车、发动机、冷却液还是传感器出了问题。</p>
+</blockquote>
+<figure class="concept-figure">
+<img src="../assets/concepts/08-observability-fault-recovery.webp" width="1536" height="1024" loading="lazy" decoding="async" alt="一次请求穿过网关、推理引擎、GPU 和网络，指标日志与追踪证据汇入诊断台，故障节点被绕过并从检查点恢复">
+<figcaption><strong>概念图：从用户症状沿证据链恢复</strong>先关联请求路径，再定位故障点，随后转移流量并恢复状态；告警只是第一步。<span class="look-for">看图时关注：诊断、缓解和恢复是连续动作，Checkpoint 只解决状态恢复的一部分。</span></figcaption>
+</figure>
+<h2 id="四类信号">四类信号</h2>
+<table>
+<thead>
+<tr>
+<th>信号</th>
+<th>擅长回答</th>
+<th>AI Infra 示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Metrics</td>
+<td>总体趋势和告警</td>
+<td>TTFT P99、KV 使用率、GPU 利用率</td>
+</tr>
+<tr>
+<td>Logs</td>
+<td>离散事件和详细上下文</td>
+<td>OOM、模型加载失败、NCCL 错误</td>
+</tr>
+<tr>
+<td>Traces</td>
+<td>一次请求跨组件花了多久</td>
+<td>Gateway → Router → Prefill → Decode</td>
+</tr>
+<tr>
+<td>Profiles</td>
+<td>CPU/GPU 时间具体消耗在哪里</td>
+<td>热点函数、Kernel、内存访问</td>
+</tr>
+</tbody>
+</table>
+<p>OpenTelemetry 提供统一采集和语义约定。制作时 Semantic Conventions 最新 Release 为 1.44.0；GenAI 约定仍可能快速演进，因此字段名应按项目当前稳定性说明使用。</p>
+<h2 id="一次慢请求的因果链">一次慢请求的因果链</h2>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IFRECiAgICBUW1RURlQgUDk5IOS4iuWNh10gLS0+IFF75YWl5Y+j6Zif5YiX5Y+Y6ZW/P30KICAgIFEgLS0+fOaYr3wgUlvot6/nlLHkuI3lnYcgLyDlrrnph4/kuI3otrNdCiAgICBRIC0tPnzlkKZ8IFB7UHJlZmlsbCDml7bpl7Tlj5jplb8/fQogICAgUCAtLT585pivfCBCW0JhdGNoL+mVvyBQcm9tcHQvS2VybmVsXQogICAgUCAtLT585ZCmfCBLe0tWIOS8oOi+k+WPmOaFoj99CiAgICBLIC0tPnzmmK98IE5b572R57ucL1JETUEv5ouT5omRXQogICAgSyAtLT585ZCmfCBDW+ajgOafpeaooeWei+WKoOi9veOAgUdQVSDkuI7nvZHlhbNdCg==">flowchart TD
+    T[TTFT P99 上升] --&gt; Q{入口队列变长?}
+    Q --&gt;|是| R[路由不均 / 容量不足]
+    Q --&gt;|否| P{Prefill 时间变长?}
+    P --&gt;|是| B[Batch/长 Prompt/Kernel]
+    P --&gt;|否| K{KV 传输变慢?}
+    K --&gt;|是| N[网络/RDMA/拓扑]
+    K --&gt;|否| C[检查模型加载、GPU 与网关]
+</pre></div><p>只看 TTFT 无法知道哪一段慢。Trace 需要把请求 ID 和模型、Token 数、Batch、缓存命中、Prefill/Decode 实例、GPU 与网络信息关联起来。</p>
+<h2 id="经典-red-use-为什么不够">经典 RED/USE 为什么不够</h2>
+<p>RED 看 Rate、Errors、Duration；USE 看 Utilization、Saturation、Errors。它们仍有价值，但 LLM 请求持续流式输出，内部有排队、Prefill、Decode、KV 与批处理。一个 HTTP 请求“成功且耗时 30 秒”可能是正常长回答，也可能是严重卡顿。</p>
+<p>需要补充 Token 语义：输入/输出 Token、TTFT、TPOT/ITL、等待 Token、Batch、KV 命中与占用，以及每阶段错误。</p>
+<h2 id="三种常见假象">三种常见假象</h2>
+<h3 id="gpu-很忙-但用户仍然慢">GPU 很忙，但用户仍然慢</h3>
+<p>可能 Batch 过大、少数长请求占用资源，或 GPU 做了大量无法改善首字延迟的工作。</p>
+<h3 id="gpu-不忙-但请求在排队">GPU 不忙，但请求在排队</h3>
+<p>可能调度、数据准备、模型加载、通信同步或显存碎片阻止新请求进入，而不是算力不足。</p>
+<h3 id="平均-ttft-正常-但投诉增加">平均 TTFT 正常，但投诉增加</h3>
+<p>尾延迟恶化会被平均值掩盖。应同时看 P50、P95、P99，并按模型、租户、输入长度和缓存命中拆分。</p>
+<h2 id="pd-分离需要分阶段观测">PD 分离需要分阶段观测</h2>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="c2VxdWVuY2VEaWFncmFtCiAgICBwYXJ0aWNpcGFudCBHIGFzIEdhdGV3YXkKICAgIHBhcnRpY2lwYW50IFAgYXMgUHJlZmlsbAogICAgcGFydGljaXBhbnQgWCBhcyBLViBUcmFuc2ZlcgogICAgcGFydGljaXBhbnQgRCBhcyBEZWNvZGUKICAgIEctPj5QOiB0cmFjZSBzcGFuICsgdG9rZW4gYXR0cnMKICAgIFAtPj5YOiBwcmVmaWxsX21zIC8ga3ZfYnl0ZXMKICAgIFgtPj5EOiB0cmFuc2Zlcl9tcyAvIHRvcG9sb2d5CiAgICBELS0+Pkc6IHRwb3QgLyBxdWV1ZSAvIGNhY2hlCg==">sequenceDiagram
+    participant G as Gateway
+    participant P as Prefill
+    participant X as KV Transfer
+    participant D as Decode
+    G-&gt;&gt;P: trace span + token attrs
+    P-&gt;&gt;X: prefill_ms / kv_bytes
+    X-&gt;&gt;D: transfer_ms / topology
+    D--&gt;&gt;G: tpot / queue / cache
+</pre></div><p>如果只有端到端 TTFT，调 P:D 比例、Batch、KV Policy 或 RDMA 都像盲人摸象。跨层指标的价值不是仪表盘更多，而是能把异常直接映射到下一步行动。</p>
+<h2 id="可靠性-训练与推理不同">可靠性：训练与推理不同</h2>
+<p>训练任务状态巨大、持续时间长，常通过 Checkpoint 和可变通信组恢复；在线推理请求更短，但要求流式会话、缓存和路由连续。副本失败时可以重试，但长上下文 Prefill 重算代价高，工具调用还可能有副作用。</p>
+<p>可靠性设计要明确 RTO（多久恢复）和 RPO（允许丢多少状态），并通过故障注入验证，而不是只写架构图。</p>
+<p>Checkpoint 还受到存储层次影响。写到同伴内存最快，但整个机架断电可能一起丢；节点本地 SSD 较快，却不能保证节点损坏后可用；并行文件系统或对象存储更耐久，但写入和恢复更慢。常见做法是分层：高频写近端、低频异步复制到耐久存储，并验证清单、分片和校验和都完整。模型权重是发布制品，训练 Checkpoint 是可恢复状态，两者不能只按文件大小混为一谈。</p>
+<div class="callout warning"><strong>指标必须带上下文</strong>没有模型、Token 长度、Batch、缓存命中和硬件拓扑，单个性能数字很难解释，更无法跨系统比较。</div>
+<h2 id="完整案例-gpu-看起来正常-p99-却翻倍">完整案例：GPU 看起来正常，P99 却翻倍</h2>
+<p>平均 GPU busy 保持 75%，但长文档租户的 TTFT P99 翻倍。按租户和输入长度拆分后，只有缓存未命中的 16k+ Prompt 异常；Trace 显示入口队列正常，Prefill 耗时增加，Profile 又指向某个新 Kernel。此时结论不是“加副本”，而是回滚 Kernel 或对特定形状修复编译路径。</p>
+<p>若同时发现一个 GPU 出现错误，先把新请求从该副本摘除，判断流式请求能否重试；训练任务则按 RTO/RPO 选择通信组缩减或从最近 Checkpoint 恢复。观测证据要能连接“症状、原因、缓解、恢复验证”四步。</p>
+<h2 id="动手练习-20-分钟">动手练习（20 分钟）</h2>
+<div class="exercise"><strong>做一次纸上事故演练</strong>选择“TTFT P99 上升”作为告警。依次写出网关、路由、Prefill、KV 传输、Decode、GPU/NIC 各一个指标或 Trace 属性；为三个可能原因写验证证据、立即缓解和长期修复。最后给训练 Checkpoint 设一个 RTO 与 RPO。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考框架</summary><p>可用信号包括入口等待、等待 Token、输入长度、Prefill 时间、KV 字节与传输时间、TPOT、缓存占用、GPU 内存带宽和 NIC 重传。立即缓解应可回滚、可验证；长期修复要对应已证实原因。RTO/RPO 没有通用数值，但必须与 Checkpoint 间隔、写入层级和业务损失一致。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能用 Metrics 找范围、用 Trace 找路径、用 Logs/Profiles 找细节。</li><li>我会按模型、租户、长度和缓存命中拆分尾延迟。</li><li>我能解释不同 Checkpoint 存储层级对 RTO/RPO 的影响。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>有 Prometheus 就具备完整可观测性</td>
+<td>指标还需要跨层语义、Trace 关联与诊断方法。</td>
+</tr>
+<tr>
+<td>平均延迟正常即可</td>
+<td>用户问题常集中在 P95/P99 和特定租户/输入。</td>
+</tr>
+<tr>
+<td>GPU 利用率低就应减少机器</td>
+<td>可能是队列、同步、数据或内存瓶颈。</td>
+</tr>
+<tr>
+<td>自动重试总能提高可靠性</td>
+<td>有副作用的工具调用可能被重复执行。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223860"><strong>9/9 14:30 · End-to-End Observability</strong><br>关注三个生产事故如何从 Token 一直定位到 GPU。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1220647"><strong>9/9 16:15 · Why Your TTFT Lies</strong><br>关注最小指标集如何映射 P:D、Batch、KV 与 RDMA 调参。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223450"><strong>9/9 11:45 · Meta Training Through Failures</strong><br>关注训练 RTO、Checkpoint 位置与动态通信组。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-3/14-30-inference-observability.md">推理可观测性</a> · <a href="../notes/day-3/16-15-ttft-lies.md">TTFT 诊断</a> · <a href="../notes/day-3/11-45-meta-fault-tolerance.md">Meta 训练容错</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>Trace 怎样跨流式连接和 P/D 两个阶段保持关联？</li>
+<li>指标是否按模型、租户、长度和缓存命中分解？</li>
+<li>故障演练测出的 RTO/RPO 是多少，哪些状态必须重建？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. Metrics 与 Traces 的主要区别？</summary><p>Metrics 展示总体趋势；Trace 还原某一次请求跨组件的路径和耗时。</p></details>
+<details><summary>2. 为什么平均 TTFT 会骗人？</summary><p>它会掩盖尾延迟和特定模型、长度、租户或缓存状态下的问题。</p></details>
+<details><summary>3. GPU 不忙但队列增长，可能是什么？</summary><p>调度、模型加载、通信、数据准备、显存碎片等阻塞了工作进入 GPU。</p></details>
+<details><summary>4. RTO 与 RPO 分别是什么？</summary><p>RTO 是目标恢复时间；RPO 是可接受的状态或数据丢失范围。</p></details>
+<details><summary>5. Agent 工具调用为何不能盲目重试？</summary><p>调用可能产生外部副作用，重复执行会造成重复修改、发送或交易。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">OpenTelemetry GenAI Semantic Conventions</a></li>
+<li><a href="https://github.com/open-telemetry/semantic-conventions/releases/tag/v1.44.0">Semantic Conventions v1.44.0</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="10-security-multitenancy.html"><small>上一篇</small>安全与多租户</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#四类信号" class="toc-h2">四类信号</a><a href="#一次慢请求的因果链" class="toc-h2">一次慢请求的因果链</a><a href="#经典-red-use-为什么不够" class="toc-h2">经典 RED/USE 为什么不够</a><a href="#三种常见假象" class="toc-h2">三种常见假象</a><a href="#gpu-很忙-但用户仍然慢" class="toc-h3">GPU 很忙，但用户仍然慢</a><a href="#gpu-不忙-但请求在排队" class="toc-h3">GPU 不忙，但请求在排队</a><a href="#平均-ttft-正常-但投诉增加" class="toc-h3">平均 TTFT 正常，但投诉增加</a><a href="#pd-分离需要分阶段观测" class="toc-h2">PD 分离需要分阶段观测</a><a href="#可靠性-训练与推理不同" class="toc-h2">可靠性：训练与推理不同</a><a href="#完整案例-gpu-看起来正常-p99-却翻倍" class="toc-h2">完整案例：GPU 看起来正常，P99 却翻倍</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>OpenTelemetry SemConv v1.44.0</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

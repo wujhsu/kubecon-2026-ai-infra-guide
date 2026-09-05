@@ -1,0 +1,78 @@
+{
+  "name": "kubecon-2026-ai-infra-guide",
+  "version": "0.1.0",
+  "description": "面向 KubeCon China 2026 参会者的中文 AI Infra 初学者预习站与离线笔记库",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://wujhsu.github.io/kubecon-2026-ai-infra-guide/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wujhsu/kubecon-2026-ai-infra-guide.git"
+  },
+  "keywords": [
+    "ai-infrastructure",
+    "kubecon",
+    "kubernetes",
+    "pytorch",
+    "llm-inference",
+    "gpu"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "guide:build": "node scripts/build-guide.mjs",
+    "predev": "npm run guide:build",
+    "dev": "vinext dev",
+    "prebuild": "npm run guide:build",
+    "build": "vinext build",
+    "start": "wrangler dev --config dist/server/wrangler.json",
+    "lint": "oxlint app scripts src-static",
+    "verify": "node scripts/verify-guide.mjs",
+    "verify:online": "node scripts/verify-online.mjs",
+    "format": "oxfmt"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.7.0",
+    "@shadcn/react": "0.3.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "cmdk": "1.1.1",
+    "date-fns": "4.1.0",
+    "embla-carousel-react": "8.5.2",
+    "gray-matter": "^4.0.3",
+    "input-otp": "1.4.2",
+    "lucide-react": "1.31.0",
+    "markdown-it": "^15.0.1",
+    "mermaid": "^11.17.2",
+    "react": "19.2.8",
+    "react-day-picker": "9.8.1",
+    "react-dom": "19.2.8",
+    "react-resizable-panels": "4.5.8",
+    "react-server-dom-webpack": "19.2.8",
+    "recharts": "3.8.0",
+    "shadcn": "4.18.0",
+    "tailwind-merge": "3.6.0",
+    "tw-animate-css": "1.4.0",
+    "vinext": "1.0.0-beta.9"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.54.4",
+    "@cloudflare/workers-types": "5.20260905.1",
+    "@openai/sites-vite-plugin": "0.2.0",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.34",
+    "oxfmt": "0.61.0",
+    "oxlint": "1.76.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vite": "8.2.2",
+    "wrangler": "4.129.0"
+  },
+  "type": "module"
+}

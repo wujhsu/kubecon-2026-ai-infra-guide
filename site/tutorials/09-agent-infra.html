@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="从模型循环、工具协议、工作流和记忆出发，理解生产 Agent 为什么需要新的运行时与隔离能力。"><meta name="color-scheme" content="light dark">
+  <title>Agent 不只是一次模型调用：Runtime、MCP 与工作流 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/09-agent-infra.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">Agent 平台 · 45 分钟</div><h1>Agent 不只是一次模型调用：Runtime、MCP 与工作流</h1><p>从模型循环、工具协议、工作流和记忆出发，理解生产 Agent 为什么需要新的运行时与隔离能力。</p><div class="meta"><span>入门 → 中级</span><span>更新于 2026-09-05</span><span>2 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#agent-的基本循环" class="toc-h2">Agent 的基本循环</a><a href="#mcp-解决什么" class="toc-h2">MCP 解决什么</a><a href="#agent-与工作流的边界" class="toc-h2">Agent 与工作流的边界</a><a href="#记忆不是一个数据库名字" class="toc-h2">记忆不是一个数据库名字</a><a href="#为什么需要沙箱" class="toc-h2">为什么需要沙箱</a><a href="#agent-平台的四条控制线" class="toc-h2">Agent 平台的四条控制线</a><a href="#完整案例-重试造成两次退款" class="toc-h2">完整案例：重试造成两次退款</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>区分 Agent、模型与工作流；理解 MCP 只标准化工具交互，不自动解决权限；能画出 Agent Runtime 的状态、工具、执行与审计边界。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：模型像会提出下一步建议的大脑，Agent Runtime 像项目经理，工具是可调用的同事，沙箱是有门禁和监控的工作间。</p>
+</blockquote>
+<figure class="concept-figure">
+<img src="../assets/concepts/07-agent-sandbox-boundaries.webp" width="1536" height="1024" loading="lazy" decoding="async" alt="不可信输入依次经过策略过滤、工具网关、短期钥匙和透明隔离沙箱，输出再通过审计出口">
+<figcaption><strong>概念图：Agent 的能力要穿过多层边界</strong>每层只解决一种风险：策略判断、工具授权、短期身份、代码隔离和出口审计需要组合。<span class="look-for">看图时关注：沙箱位于授权之后，说明隔离环境里也不能放入无限权限。</span></figcaption>
+</figure>
+<h2 id="agent-的基本循环">Agent 的基本循环</h2>
+<p>普通聊天可以是一问一答；Agent 通常循环多次：观察当前状态、让模型决定下一步、调用工具、读取结果，再决定是否完成。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="c3RhdGVEaWFncmFtLXYyCiAgICBbKl0gLS0+IE9ic2VydmU6IOaOpeaUtuebruagh+S4jueKtuaAgQogICAgT2JzZXJ2ZSAtLT4gRGVjaWRlOiDosIPnlKjmqKHlnosKICAgIERlY2lkZSAtLT4gQWN0OiDpgInmi6nlt6XlhbcKICAgIEFjdCAtLT4gT2JzZXJ2ZTog6K6w5b2V5bel5YW357uT5p6cCiAgICBEZWNpZGUgLS0+IEZpbmlzaDog5bey5ruh6Laz55uu5qCHCiAgICBEZWNpZGUgLS0+IEd1YXJkcmFpbDog6auY6aOO6Zmp5Yqo5L2cCiAgICBHdWFyZHJhaWwgLS0+IEFjdDog6I635b6X5o6I5p2DCiAgICBHdWFyZHJhaWwgLS0+IEZpbmlzaDog5ouS57ud5oiW57uI5q2iCiAgICBGaW5pc2ggLS0+IFsqXQo=">stateDiagram-v2
+    [*] --&gt; Observe: 接收目标与状态
+    Observe --&gt; Decide: 调用模型
+    Decide --&gt; Act: 选择工具
+    Act --&gt; Observe: 记录工具结果
+    Decide --&gt; Finish: 已满足目标
+    Decide --&gt; Guardrail: 高风险动作
+    Guardrail --&gt; Act: 获得授权
+    Guardrail --&gt; Finish: 拒绝或终止
+    Finish --&gt; [*]
+</pre></div><p>Runtime 要保存循环状态、限制步数和预算、处理超时重试，并在模型或工具失败时决定能否继续。</p>
+<h2 id="mcp-解决什么">MCP 解决什么</h2>
+<p>Model Context Protocol 为工具发现、参数描述、调用和结果返回提供共同语言。它降低每个 Agent 单独适配服务的成本。</p>
+<p>MCP 不等于授权系统。服务器暴露一个“删除文件”工具，并不说明当前用户可以删除哪些文件；身份、最小权限、审批、审计和网络边界仍由平台实现。</p>
+<h2 id="agent-与工作流的边界">Agent 与工作流的边界</h2>
+<p>确定性工作流事先写好步骤和分支，容易审计和重放；Agent 让模型动态选择步骤，适应性更强但更难预测。生产系统常组合二者：工作流固定高层边界，Agent 只在受控步骤内做开放决策。</p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>适合</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>固定工作流</td>
+<td>合规审批、数据流水线、可重复操作</td>
+<td>难处理未知情况</td>
+</tr>
+<tr>
+<td>自主 Agent</td>
+<td>调研、开放问题、探索式编码</td>
+<td>行为不可预测、成本和权限更难控</td>
+</tr>
+<tr>
+<td>混合方式</td>
+<td>企业生产 Agent</td>
+<td>设计和状态管理更复杂，但边界更清楚</td>
+</tr>
+</tbody>
+</table>
+<h2 id="记忆不是一个数据库名字">记忆不是一个数据库名字</h2>
+<p>Agent 的“记忆”至少有三类：当前任务上下文、跨任务长期事实、执行过程与审计记录。它们的保留时间、隐私和一致性要求不同。向量数据库适合语义检索，但不能自动保证事实正确或权限隔离。</p>
+<h2 id="为什么需要沙箱">为什么需要沙箱</h2>
+<p>当模型生成并运行代码时，传统的“应用是可信的”假设失效。沙箱需要控制文件系统、网络、系统调用、凭据、CPU/GPU/内存和运行时间。短任务还要求快速启动和回收。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IFRCCiAgICBVW+eUqOaIt+i6q+S7vV0gLS0+IFJbQWdlbnQgUnVudGltZV0KICAgIFIgLS0+IE1b5qih5Z6L5pyN5YqhXQogICAgUiAtLT4gUFvnrZbnlaXkuI7lrqHmibldCiAgICBQIC0tPiBTW+S4tOaXtuaymeeusV0KICAgIFMgLS0+IEdbTUNQIEdhdGV3YXldCiAgICBHIC0tPiBUMVvku6PnoIEv5pWw5o2u5bel5YW3XQogICAgRyAtLT4gVDJb5aSW6YOo57O757ufXQogICAgUiAtLT4gQVso54q25oCB5LiO5a6h6K6hKV0K">flowchart TB
+    U[用户身份] --&gt; R[Agent Runtime]
+    R --&gt; M[模型服务]
+    R --&gt; P[策略与审批]
+    P --&gt; S[临时沙箱]
+    S --&gt; G[MCP Gateway]
+    G --&gt; T1[代码/数据工具]
+    G --&gt; T2[外部系统]
+    R --&gt; A[(状态与审计)]
+</pre></div><h2 id="agent-平台的四条控制线">Agent 平台的四条控制线</h2>
+<ol>
+<li><strong>身份线</strong>：每个用户、Agent 实例和工具调用是谁。</li>
+<li><strong>权限线</strong>：它能读取、修改和发送什么。</li>
+<li><strong>执行线</strong>：代码在哪里运行，资源和网络如何限制。</li>
+<li><strong>审计线</strong>：模型决定、工具参数、结果和外部副作用能否追溯。</li>
+</ol>
+<div class="callout warning"><strong>工具协议不等于信任</strong>标准化调用格式会让工具更容易接入，也会让危险能力更容易被调用。授权和隔离必须同时设计。</div>
+<h2 id="完整案例-重试造成两次退款">完整案例：重试造成两次退款</h2>
+<p>Agent 调用“创建退款”工具后网络超时，Runtime 没收到结果，于是自动重试；第一次其实已经成功，最终用户收到两笔退款。模型是否聪明与这个故障无关，问题在副作用语义。</p>
+<p>稳健设计会给操作生成幂等键，让服务端把相同键识别为同一次动作；Runtime 保存“已发起、结果未知”的状态，不把超时等同于失败；高风险工具先进入确定性审批；审计记录用户身份、Agent 实例、工具参数摘要、幂等键和最终结果。长期记忆只能保存业务允许保留的事实，不应顺手写入密钥或完整敏感返回。</p>
+<h2 id="动手练习-15-分钟">动手练习（15 分钟）</h2>
+<div class="exercise"><strong>拆解一个订票 Agent</strong>画出“搜索车次、选择、付款、发消息”四步。标注哪些步骤可安全重试，哪些必须使用幂等键或人工确认；再为每步写出最小工具权限和超时后的状态。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考思路</summary><p>搜索通常可重试；选择可作为本地状态；付款必须幂等并在结果未知时查询订单，不能直接再付；发消息也应使用去重键。工具只暴露完成当前步骤所需权限，付款凭据不应传给搜索沙箱。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能分清模型、Agent Runtime、工作流和 MCP 的职责。</li><li>我会把超时看成“结果未知”，而不是自动视为失败。</li><li>我能为工具调用画出身份、权限、沙箱和审计链。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent 就是更长的 Prompt</td>
+<td>还需要状态、工具、执行、预算和失败处理。</td>
+</tr>
+<tr>
+<td>MCP 自带企业权限治理</td>
+<td>MCP 标准化交互，身份与授权仍需平台负责。</td>
+</tr>
+<tr>
+<td>长期记忆越多越好</td>
+<td>过期、错误或越权信息会污染决策并增加隐私风险。</td>
+</tr>
+<tr>
+<td>Namespace 足以运行不可信代码</td>
+<td>常需独立内核沙箱、网络限制和身份隔离。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1177779"><strong>9/8 13:45 · Secure Agentic Workflows</strong><br>关注 MCP Gateway、SPIFFE/SPIRE 与跨 Agent 通信。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1225364"><strong>9/8 11:45 · Digital Employees at CMB</strong><br>关注 Agent-as-a-Service 模板、金融护栏和数据主权。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-2/13-45-secure-agentic-workflows.md">Secure Agentic Workflows</a> · <a href="../notes/day-2/11-45-digital-employees.md">Digital Employees</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>用户身份怎样传递到每一次工具调用？</li>
+<li>哪些步骤由模型决定，哪些由确定性策略控制？</li>
+<li>重试是否可能重复下单、发消息或修改数据？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. 模型与 Agent Runtime 的分工？</summary><p>模型提出或生成下一步；Runtime 管理循环、状态、工具、预算、策略和失败。</p></details>
+<details><summary>2. MCP 不解决什么？</summary><p>它不自动完成用户授权、沙箱隔离、审计和业务风险判断。</p></details>
+<details><summary>3. 为什么工作流与 Agent 常组合？</summary><p>工作流提供确定边界，Agent 在边界内处理开放决策，兼顾可控与适应性。</p></details>
+<details><summary>4. 长期记忆的主要风险？</summary><p>错误、过期、越权和敏感信息可能被后续任务检索并影响决策。</p></details>
+<details><summary>5. Agent 重试为什么比普通 GET 请求危险？</summary><p>工具调用可能有外部副作用，重复执行可能造成重复修改或交易。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://modelcontextprotocol.io/">Model Context Protocol 官方文档</a></li>
+<li><a href="https://github.com/kubernetes-sigs/agent-sandbox">Kubernetes Agent Sandbox 项目</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="08-k8s-ai-scheduling.html"><small>上一篇</small>Kubernetes AI 调度</a><a class="next" href="10-security-multitenancy.html"><small>下一篇</small>安全与多租户</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#agent-的基本循环" class="toc-h2">Agent 的基本循环</a><a href="#mcp-解决什么" class="toc-h2">MCP 解决什么</a><a href="#agent-与工作流的边界" class="toc-h2">Agent 与工作流的边界</a><a href="#记忆不是一个数据库名字" class="toc-h2">记忆不是一个数据库名字</a><a href="#为什么需要沙箱" class="toc-h2">为什么需要沙箱</a><a href="#agent-平台的四条控制线" class="toc-h2">Agent 平台的四条控制线</a><a href="#完整案例-重试造成两次退款" class="toc-h2">完整案例：重试造成两次退款</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>概念与开放协议</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="用搬书和流水线理解数据、张量、流水线、专家并行，以及 FSDP、Megatron、MoE 各自在切什么。"><meta name="color-scheme" content="light dark">
+  <title>一张卡放不下之后：分布式训练与并行策略 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/04-distributed-training.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">训练系统 · 55 分钟</div><h1>一张卡放不下之后：分布式训练与并行策略</h1><p>用搬书和流水线理解数据、张量、流水线、专家并行，以及 FSDP、Megatron、MoE 各自在切什么。</p><div class="meta"><span>中级</span><span>更新于 2026-09-05</span><span>2 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#为什么需要分布式" class="toc-h2">为什么需要分布式</a><a href="#四种并行方式" class="toc-h2">四种并行方式</a><a href="#fsdp-在切什么" class="toc-h2">FSDP 在切什么</a><a href="#moe-为什么参数多但计算不一定同比增加" class="toc-h2">MoE 为什么参数多但计算不一定同比增加</a><a href="#强化学习训练为何更像系统工程" class="toc-h2">强化学习训练为何更像系统工程</a><a href="#大规模训练为什么必须容错" class="toc-h2">大规模训练为什么必须容错</a><a href="#完整案例-70b-模型如何选并行" class="toc-h2">完整案例：70B 模型如何选并行</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>能判断一种并行策略切分的是数据、模型参数、层还是专家；理解为什么大规模训练同时受显存、计算、通信和故障概率约束。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：训练大模型像多人搬一座图书馆。可以让每个人搬不同房间的同类书，也可以把一本巨书拆开，或者把装订、质检、入库排成流水线。</p>
+</blockquote>
+<figure class="concept-figure">
+<img src="../assets/concepts/04-distributed-training-communication.webp" width="1536" height="1024" loading="lazy" decoding="async" alt="四台多 GPU 服务器围绕高速交换结构协作，旁边以不同块状切分表示张量、流水线和专家分工">
+<figcaption><strong>概念图：切分方式决定通信方式</strong>同一批 GPU 可以按数据、张量、层或专家分工，但每种分工会产生不同的数据交换。<span class="look-for">看图时关注：计算节点之外还有网络与存储，训练从来不只是卡内计算。</span></figcaption>
+</figure>
+<h2 id="为什么需要分布式">为什么需要分布式</h2>
+<p>一张 GPU 可能遇到三个上限：模型和训练状态放不下；计算时间太长；数据规模太大。分布式不是免费扩容，每增加参与者也增加同步、等待与故障面。</p>
+<h2 id="四种并行方式">四种并行方式</h2>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>切分对象</th>
+<th>优点</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据并行 DP</td>
+<td>每卡处理不同数据，模型各有一份</td>
+<td>思路简单、扩展常见</td>
+<td>梯度要同步，模型仍需单卡放下</td>
+</tr>
+<tr>
+<td>张量并行 TP</td>
+<td>把一个大矩阵运算切到多卡</td>
+<td>单层模型可突破单卡容量</td>
+<td>通信频繁，依赖高速互联</td>
+</tr>
+<tr>
+<td>流水线并行 PP</td>
+<td>把不同模型层放在不同卡</td>
+<td>层间边界直观</td>
+<td>产生 Pipeline Bubble，调度复杂</td>
+</tr>
+<tr>
+<td>专家并行 EP</td>
+<td>MoE 的不同专家放在不同卡</td>
+<td>只激活部分参数</td>
+<td>Token 路由和 All-to-All 通信昂贵</td>
+</tr>
+</tbody>
+</table>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IFRCCiAgICBNW+WujOaVtOaooeWei+S4juS4gOaJueaVsOaNrl0gLS0+IERQW+aVsOaNruW5tuihjDog5YiHIEJhdGNoXQogICAgTSAtLT4gVFBb5byg6YeP5bm26KGMOiDliIfnn6npmLVdCiAgICBNIC0tPiBQUFvmtYHmsLTnur/lubbooYw6IOWIh+Wxgl0KICAgIE0gLS0+IEVQW+S4k+WutuW5tuihjDog5YiHIEV4cGVydHNdCiAgICBEUCAtLT4gSFlb5a6e6ZmF57O757uf5bi457uE5ZCI5aSa56eN5bm26KGMXQogICAgVFAgLS0+IEhZCiAgICBQUCAtLT4gSFkKICAgIEVQIC0tPiBIWQo=">flowchart TB
+    M[完整模型与一批数据] --&gt; DP[数据并行: 切 Batch]
+    M --&gt; TP[张量并行: 切矩阵]
+    M --&gt; PP[流水线并行: 切层]
+    M --&gt; EP[专家并行: 切 Experts]
+    DP --&gt; HY[实际系统常组合多种并行]
+    TP --&gt; HY
+    PP --&gt; HY
+    EP --&gt; HY
+</pre></div><h2 id="fsdp-在切什么">FSDP 在切什么</h2>
+<p>普通数据并行每个进程都保存完整参数、梯度和优化器状态。Fully Sharded Data Parallel 把这些状态切分到多个进程，需要计算某一层时再临时聚合，完成后释放或重新切分。</p>
+<p>这样节省显存，但带来更多通信，也要求认真选择包裹粒度、预取和混合精度策略。FSDP2 强调以参数维度管理切分，接口与组合性持续演进，应以当前 PyTorch 2.14 文档为准。</p>
+<h2 id="moe-为什么参数多但计算不一定同比增加">MoE 为什么参数多但计算不一定同比增加</h2>
+<p>Mixture of Experts 为每个 Token 只选择少量专家。总参数可以很大，但一次前向只激活其中一部分。难点转移到路由平衡：如果大量 Token 选择同一专家，它会拥堵；跨设备交换 Token 又会形成 All-to-All 通信。</p>
+<h2 id="强化学习训练为何更像系统工程">强化学习训练为何更像系统工程</h2>
+<p>LLM 强化学习包含生成样本、打分、更新策略、同步权重等环节。推理引擎与训练引擎可能交替抢 GPU，长尾样本让各 worker 完成时间不同。veRL、Twinkle 等项目试图把算法组件与 GPU 编排解耦。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="c2VxdWVuY2VEaWFncmFtCiAgICBwYXJ0aWNpcGFudCBPIGFzIE9yY2hlc3RyYXRvcgogICAgcGFydGljaXBhbnQgUiBhcyBSb2xsb3V0L+aOqOeQhgogICAgcGFydGljaXBhbnQgVyBhcyBSZXdhcmQKICAgIHBhcnRpY2lwYW50IFQgYXMgVHJhaW5lcgogICAgTy0+PlI6IOW9k+WJjeetlueVpeeUn+aIkOWbnuetlAogICAgUi0tPj5POiBUcmFqZWN0b3JpZXMKICAgIE8tPj5XOiDorqHnrpflpZblirEKICAgIFctLT4+TzogUmV3YXJkCiAgICBPLT4+VDog5omn6KGMIEdSUE8vRFBPIOabtOaWsAogICAgVC0tPj5SOiDlj5HluIPmlrDmnYPph40K">sequenceDiagram
+    participant O as Orchestrator
+    participant R as Rollout/推理
+    participant W as Reward
+    participant T as Trainer
+    O-&gt;&gt;R: 当前策略生成回答
+    R--&gt;&gt;O: Trajectories
+    O-&gt;&gt;W: 计算奖励
+    W--&gt;&gt;O: Reward
+    O-&gt;&gt;T: 执行 GRPO/DPO 更新
+    T--&gt;&gt;R: 发布新权重
+</pre></div><h2 id="大规模训练为什么必须容错">大规模训练为什么必须容错</h2>
+<p>假设单卡每天出故障的概率很低，十万张 GPU 同时工作时，集群每天仍会遇到硬件问题。传统做法让所有进程退出、从共享存储读取 Checkpoint；更先进的方法尝试缩减或扩展通信组，并把 Checkpoint 写到同伴内存或本地盘，减少恢复时间。</p>
+<p>训练的数据与状态也有清晰的流向：Dataset 通常来自对象存储或并行文件系统，经 DataLoader 预取到 CPU，再送入 GPU；训练状态则反向写成 Checkpoint。一个可恢复 Checkpoint 不只是模型权重，还可能包括优化器、学习率调度器、随机数状态、数据读取位置和分片元数据。只保存权重，往往无法精确续跑。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IExSCiAgICBPWyjlr7nosaHlrZjlgqggRGF0YXNldCldIC0tPiBMW0RhdGFMb2FkZXIgLyDpooTlj5ZdCiAgICBMIC0tPiBHW0dQVSDorq3nu4NdCiAgICBHIC0tPiBDW0NoZWNrcG9pbnQg5YiG54mHXQogICAgQyAtLT4gRlso5pys5Zyw55uYIC8g5bm26KGM5paH5Lu257O757ufKV0KICAgIEYgLS0+IE8yWyjogJDkuYXlr7nosaHlrZjlgqgpXQogICAgTzIgLS0+fOaVhemanOWQjuivu+WPlnwgRwo=">flowchart LR
+    O[(对象存储 Dataset)] --&gt; L[DataLoader / 预取]
+    L --&gt; G[GPU 训练]
+    G --&gt; C[Checkpoint 分片]
+    C --&gt; F[(本地盘 / 并行文件系统)]
+    F --&gt; O2[(耐久对象存储)]
+    O2 --&gt;|故障后读取| G
+</pre></div><div class="callout warning"><strong>扩更多卡不等于线性加速</strong>当通信、负载不均和等待占比上升时，新增 GPU 可能主要用于等待。</div>
+<h2 id="完整案例-70b-模型如何选并行">完整案例：70B 模型如何选并行</h2>
+<p>假设单卡显存放不下训练状态，8 卡单机有高速 NVLink，跨机网络明显更慢。第一步用 FSDP/FSDP2 切参数、梯度和优化器状态，先解决容量；若单层矩阵仍太大，再在单机高速域内加 Tensor Parallel；模型层数多且规模继续扩大时，再跨节点考虑 Pipeline Parallel。若是 MoE，还要把 Expert Parallel 的 All-to-All 放到拓扑较好的范围。</p>
+<p>策略不是越多越高级。每加一个并行维度都会增加通信组、配置和恢复难度，应记录“它解决的是容量还是训练时间”以及新增通信量。</p>
+<h2 id="动手练习-20-分钟">动手练习（20 分钟）</h2>
+<div class="exercise"><strong>为四种约束选第一步</strong>①模型状态放不进单卡；②单层矩阵放不进单卡；③模型层很多且跨机带宽有限；④MoE 专家负载严重不均。分别选择 FSDP、TP、PP、EP/路由均衡中的第一项，并画出最频繁的通信发生在哪里。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考答案</summary><p>①FSDP，以 AllGather/ReduceScatter 换显存；②TP，层内频繁通信，优先放高速互联域；③PP，把连续层分段，控制跨阶段激活传输并减少空泡；④EP 加路由均衡，关注 All-to-All 热点。真实大模型常组合，但应从最直接约束开始。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能说出 DP、TP、PP、EP 分别切什么。</li><li>我知道 Checkpoint 与模型权重文件并非同一概念。</li><li>我会把数据读取、通信和故障恢复都纳入训练方案。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FSDP 就是张量并行</td>
+<td>FSDP 主要切分训练状态；张量并行切分单个算子的计算。</td>
+</tr>
+<tr>
+<td>MoE 每次都会计算所有专家</td>
+<td>通常每个 Token 只路由到少数专家。</td>
+</tr>
+<tr>
+<td>Checkpoint 越频繁越安全</td>
+<td>更频繁会增加 I/O 和暂停，需要权衡重算成本。</td>
+</tr>
+<tr>
+<td>多卡训练只要网速快</td>
+<td>拓扑、集合通信算法、算子重叠与负载平衡同样重要。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1223450"><strong>9/9 11:45 · Meta 100k-GPU Fault Tolerance</strong><br>关注 torchcomms、通信组伸缩和不同 Checkpoint 介质。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1222557"><strong>9/9 14:30 · veRL for Ultra-Large MoE</strong><br>关注专家/序列并行、异步 RL 和训练-推理一致性。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-3/11-45-meta-fault-tolerance.md">Meta 训练容错</a> · <a href="../notes/day-3/14-30-verl-moe.md">veRL MoE</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>使用了哪几种并行，它们分别解决容量还是速度问题？</li>
+<li>通信是否与计算重叠？跨节点占比是多少？</li>
+<li>故障恢复会丢多少步，恢复时间与 Checkpoint 间隔如何选择？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. 数据并行切分什么？</summary><p>各进程处理不同数据分片，通常各自保留模型副本并同步梯度。</p></details>
+<details><summary>2. 哪种并行最依赖层内高速通信？</summary><p>张量并行，因为一个算子的分片需要频繁交换中间结果。</p></details>
+<details><summary>3. FSDP 为什么节省显存？</summary><p>参数、梯度和优化器状态不再在每个进程完整复制。</p></details>
+<details><summary>4. MoE 的典型通信是什么？</summary><p>Token 在不同专家设备间路由，经常产生 All-to-All。</p></details>
+<details><summary>5. 为什么十万卡训练必须把故障当常态？</summary><p>单设备小概率乘以巨大设备数量和长运行时间后，集群级故障会频繁出现。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://docs.pytorch.org/docs/2.14/distributed.html">PyTorch Distributed 2.14</a></li>
+<li><a href="https://docs.pytorch.org/docs/2.14/fsdp.html">PyTorch FSDP 2.14</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="03-pytorch-stack.html"><small>上一篇</small>PyTorch 技术栈</a><a class="next" href="05-gpu-communication.html"><small>下一篇</small>GPU 通信与 NCCL</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#为什么需要分布式" class="toc-h2">为什么需要分布式</a><a href="#四种并行方式" class="toc-h2">四种并行方式</a><a href="#fsdp-在切什么" class="toc-h2">FSDP 在切什么</a><a href="#moe-为什么参数多但计算不一定同比增加" class="toc-h2">MoE 为什么参数多但计算不一定同比增加</a><a href="#强化学习训练为何更像系统工程" class="toc-h2">强化学习训练为何更像系统工程</a><a href="#大规模训练为什么必须容错" class="toc-h2">大规模训练为什么必须容错</a><a href="#完整案例-70b-模型如何选并行" class="toc-h2">完整案例：70B 模型如何选并行</a><a href="#动手练习-20-分钟" class="toc-h2">动手练习（20 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>PyTorch v2.14.0</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

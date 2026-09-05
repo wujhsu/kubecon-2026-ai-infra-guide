@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="用厨房和搬运的类比理解算力、显存、带宽、并行度，以及为什么不同 AI 任务会卡在不同地方。"><meta name="color-scheme" content="light dark">
+  <title>算力不是一个数字：CPU、GPU、NPU 与内存层次 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/01-ai-hardware.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link " href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">硬件与性能 · 45 分钟</div><h1>算力不是一个数字：CPU、GPU、NPU 与内存层次</h1><p>用厨房和搬运的类比理解算力、显存、带宽、并行度，以及为什么不同 AI 任务会卡在不同地方。</p><div class="meta"><span>入门</span><span>更新于 2026-09-05</span><span>2 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#cpu-gpu-和-npu-的分工" class="toc-h2">CPU、GPU 和 NPU 的分工</a><a href="#四个性能词" class="toc-h2">四个性能词</a><a href="#算力-每秒能做多少计算" class="toc-h3">算力：每秒能做多少计算</a><a href="#显存容量-能装多少东西" class="toc-h3">显存容量：能装多少东西</a><a href="#显存带宽-每秒能搬多少数据" class="toc-h3">显存带宽：每秒能搬多少数据</a><a href="#互联带宽-卡与卡-节点与节点搬得多快" class="toc-h3">互联带宽：卡与卡、节点与节点搬得多快</a><a href="#计算受限还是带宽受限" class="toc-h2">计算受限还是带宽受限</a><a href="#完整案例-同一张-gpu-上的两种慢" class="toc-h2">完整案例：同一张 GPU 上的两种慢</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#gpu-共享为什么有用又危险" class="toc-h2">GPU 共享为什么有用又危险</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>读完后，你应该能解释：为什么 GPU 适合矩阵计算；显存容量和显存带宽有什么不同；为什么换一张理论算力更高的卡，程序不一定更快；“异构适配”到底在适配什么。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：算力像厨师的切菜速度，内存容量像厨房大小，带宽像传送带速度。厨师再快，如果食材送不过来，仍然只能等。</p>
+</blockquote>
+<figure class="concept-figure">
+<img src="../assets/concepts/02-hardware-memory-hierarchy.webp" width="1536" height="1024" loading="lazy" decoding="async" alt="从计算芯片到板上显存、设备互联、网卡和多台服务器的分层硬件搬运结构">
+<figcaption><strong>概念图：AI 计算首先是一套搬运系统</strong>数据要从更远、更慢的层级搬到计算单元附近，任何一层都可能成为瓶颈。<span class="look-for">看图时关注：越靠近计算单元通常越快、越小、越贵；跨服务器路径最长。</span></figcaption>
+</figure>
+<h2 id="cpu-gpu-和-npu-的分工">CPU、GPU 和 NPU 的分工</h2>
+<p>CPU 擅长少量复杂、分支很多的任务；GPU 擅长让大量相似计算同时进行；NPU 是对神经网络常见运算进一步专用化的加速器统称。它们不是简单的“慢、中、快”，而是工具形状不同。</p>
+<table>
+<thead>
+<tr>
+<th>设备</th>
+<th>强项</th>
+<th>常见工作</th>
+<th>主要限制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td>控制逻辑、串行处理、通用性</td>
+<td>数据准备、调度、Token 化</td>
+<td>大规模矩阵吞吐较低</td>
+</tr>
+<tr>
+<td>GPU</td>
+<td>大规模并行、成熟的软件生态</td>
+<td>训练、推理、科学计算</td>
+<td>显存昂贵，跨卡通信复杂</td>
+</tr>
+<tr>
+<td>NPU/其他 AI 加速器</td>
+<td>特定算子和数据类型效率</td>
+<td>训练或推理加速</td>
+<td>算子覆盖、编译器与工具生态差异较大</td>
+</tr>
+</tbody>
+</table>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IFRCCiAgICBBUFBbUHlUb3JjaCDmqKHlnotdIC0tPiBPUFvnrpflrZDlsYI6IG1hdG11bCAvIGF0dGVudGlvbl0KICAgIE9QIC0tPiBDT01QW+e8luivkeWZqOS4jiBLZXJuZWxdCiAgICBDT01QIC0tPiBSVFvorr7lpIfov5DooYzml7ZdCiAgICBSVCAtLT4gR1tHUFVdCiAgICBSVCAtLT4gTltOUFVdCiAgICBSVCAtLT4gWFvlhbbku5bliqDpgJ/lmahdCg==">flowchart TB
+    APP[PyTorch 模型] --&gt; OP[算子层: matmul / attention]
+    OP --&gt; COMP[编译器与 Kernel]
+    COMP --&gt; RT[设备运行时]
+    RT --&gt; G[GPU]
+    RT --&gt; N[NPU]
+    RT --&gt; X[其他加速器]
+</pre></div><p>所谓“让 PyTorch 支持一种新硬件”，通常不是加一个设备名称那么简单。需要定义设备、Stream 和内存接口，补齐算子，接入编译器，处理数值精度，建立测试，并优化通信库。</p>
+<h2 id="四个性能词">四个性能词</h2>
+<h3 id="算力-每秒能做多少计算">算力：每秒能做多少计算</h3>
+<p>FLOPS 描述浮点运算吞吐。厂商给出的峰值通常需要特定数据类型、矩阵形状和理想利用率。它是天花板，不是程序实际速度。</p>
+<h3 id="显存容量-能装多少东西">显存容量：能装多少东西</h3>
+<p>模型权重、激活、梯度、优化器状态和 KV Cache 都会占显存。容量不够时，可以切分到多卡、降低精度或 Offload 到 CPU，但这些方法会增加通信或传输成本。</p>
+<h3 id="显存带宽-每秒能搬多少数据">显存带宽：每秒能搬多少数据</h3>
+<p>Decode 每一步做的计算相对少，却要频繁读取模型权重和 KV Cache，因此常常是带宽受限。此时增加理论 FLOPS 可能帮助不大。</p>
+<h3 id="互联带宽-卡与卡-节点与节点搬得多快">互联带宽：卡与卡、节点与节点搬得多快</h3>
+<p>单机内常见 PCIe、NVLink；跨机常见 InfiniBand 或 RoCE 配合 RDMA。分布式训练可能把大量时间花在梯度同步，而不是计算。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IExSCiAgICBzdWJncmFwaCBOb2RlQVvoioLngrkgQV0KICAgICAgQTBbR1BVIDBdIDwtLT58TlZMaW5rfCBBMVtHUFUgMV0KICAgIGVuZAogICAgc3ViZ3JhcGggTm9kZUJb6IqC54K5IEJdCiAgICAgIEIwW0dQVSAyXSA8LS0+fE5WTGlua3wgQjFbR1BVIDNdCiAgICBlbmQKICAgIEExIDwtLT58TklDICsgUkRNQXwgQjAK">flowchart LR
+    subgraph NodeA[节点 A]
+      A0[GPU 0] &lt;--&gt;|NVLink| A1[GPU 1]
+    end
+    subgraph NodeB[节点 B]
+      B0[GPU 2] &lt;--&gt;|NVLink| B1[GPU 3]
+    end
+    A1 &lt;--&gt;|NIC + RDMA| B0
+</pre></div><h2 id="计算受限还是带宽受限">计算受限还是带宽受限</h2>
+<p>想象每次从仓库搬来 1 千克食材，厨师要加工 1 小时，这叫计算受限；如果只加工 1 秒，却要反复搬运 100 千克食材，这叫带宽受限。</p>
+<p>性能工程常用 <strong>Arithmetic Intensity</strong> 表示“每搬一个字节做多少运算”。矩阵乘法一般更容易计算受限，逐 Token Decode 和许多逐元素算子更容易带宽受限。Roofline 模型用一条“屋顶线”展示程序被算力还是带宽限制。</p>
+<div class="callout"><strong>先问瓶颈，再看卡型</strong>优化前先区分显存容量、显存带宽、互联带宽和计算吞吐。它们的解决方式完全不同。</div>
+<h2 id="完整案例-同一张-gpu-上的两种慢">完整案例：同一张 GPU 上的两种慢</h2>
+<p>模型 A 做长 Prompt 的 Prefill，矩阵乘法占主要时间；模型 B 做单用户长回答的 Decode，每一步都要读取权重和越来越大的 KV Cache。即使两者都显示 GPU 很忙，A 更可能受计算峰值和 Tensor Core 利用率限制，B 更可能受显存带宽限制。</p>
+<p>假设一个 Decode 步骤读 14 GB 权重和 2 GB KV，共 16 GB；显存有效带宽若为 1.6 TB/s，光搬运的理论下限约为 <code>16 GB ÷ 1600 GB/s = 10 ms</code>。Kernel 再快也不可能突破这个搬运下限。这是<strong>教学推导</strong>，实际还要考虑缓存、并发、量化、通信和带宽利用率。</p>
+<h2 id="动手练习-15-分钟">动手练习（15 分钟）</h2>
+<div class="exercise"><strong>做一次瓶颈分类</strong>为下面四种现象分别选“容量、显存带宽、互联、计算”：①模型加载时报 OOM；②单卡 Decode 加更多计算单元几乎不变快；③8 卡单机快、跨两机骤降；④大矩阵 Prefill 随更高 FLOPS 明显加速。写出每项最先查看的一个指标。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开参考答案</summary><p>①容量，看峰值显存与权重/激活/KV 构成；②显存带宽，看 HBM 读写吞吐与算术强度；③互联，看跨节点 Collective 时间和 NIC 路径；④计算，看 Kernel FLOPS、占用率与矩阵形状。分类是起点，最终仍要靠 Profile 验证。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我不会拿峰值 FLOPS 直接当应用速度。</li><li>我能分清显存容量、显存带宽和互联带宽。</li><li>我能用“每字节做多少运算”解释计算受限与带宽受限。</li></ul>
+<h2 id="gpu-共享为什么有用又危险">GPU 共享为什么有用又危险</h2>
+<p>如果每个任务只使用一小部分显存和计算资源，让多个任务共享一张 GPU 可以减少浪费。但切得太碎会造成上下文切换、缓存竞争和延迟抖动。论坛 HAMi 场次提到“小于 1/6 的切分可能适得其反”，应追问它适用的卡型、模型和并发模式。</p>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TOPS/FLOPS 越高，所有模型越快</td>
+<td>还取决于精度、算子覆盖、内存和软件效率。</td>
+</tr>
+<tr>
+<td>显存利用率高就是 GPU 利用率高</td>
+<td>容量被占用不代表计算单元持续做有效工作。</td>
+</tr>
+<tr>
+<td>NPU 是一种统一架构</td>
+<td>NPU 是类别名，不同厂商的软件接口和能力差异很大。</td>
+</tr>
+<tr>
+<td>跨卡和跨机通信差不多</td>
+<td>跨机通常带宽更低、延迟更高，也更依赖网络拓扑。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1312719"><strong>9/7 · Hardware-Aware AI</strong><br>重点记录框架适配、算子、编译器和性能调优分别由谁负责。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1221808"><strong>9/8 14:30 · HAMi GPU Virtualization</strong><br>观察共享粒度如何影响排队、利用率与成本。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-1/14-00-hardware-aware-ai.md">Hardware-Aware AI</a> · <a href="../notes/day-2/14-30-hami.md">HAMi</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>数据是卡在显存容量、带宽、互联还是计算？</li>
+<li>性能数字使用了什么精度、Batch、模型和基线？</li>
+<li>一种硬件后端缺少算子时会回退、报错还是变慢？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. GPU 为什么适合训练神经网络？</summary><p>大量矩阵与张量运算结构相似，适合 GPU 的大规模并行执行。</p></details>
+<details><summary>2. 模型能装进显存，但运行仍然慢，可能缺什么？</summary><p>可能缺显存带宽、互联带宽或算子效率；容量足够不代表供数速度足够。</p></details>
+<details><summary>3. Decode 为什么经常带宽受限？</summary><p>每一步计算量相对较小，却要读取大量权重和历史 KV Cache。</p></details>
+<details><summary>4. RDMA 解决什么问题？</summary><p>让节点间数据以较低 CPU 参与和延迟直接传输，改善跨节点通信。</p></details>
+<details><summary>5. GPU 共享的主要代价是什么？</summary><p>隔离、调度和监控更复杂，也可能出现缓存竞争、抖动和性能不可预测。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://docs.pytorch.org/docs/2.14/accelerator.html">PyTorch Accelerator（2.14 官方文档）</a></li>
+<li><a href="https://docs.nvidia.com/deeplearning/performance/">NVIDIA Deep Learning Performance Guide</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="00-learning-map.html"><small>上一篇</small>AI Infra 学习地图</a><a class="next" href="02-kubernetes-basics.html"><small>下一篇</small>Kubernetes 基础</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#cpu-gpu-和-npu-的分工" class="toc-h2">CPU、GPU 和 NPU 的分工</a><a href="#四个性能词" class="toc-h2">四个性能词</a><a href="#算力-每秒能做多少计算" class="toc-h3">算力：每秒能做多少计算</a><a href="#显存容量-能装多少东西" class="toc-h3">显存容量：能装多少东西</a><a href="#显存带宽-每秒能搬多少数据" class="toc-h3">显存带宽：每秒能搬多少数据</a><a href="#互联带宽-卡与卡-节点与节点搬得多快" class="toc-h3">互联带宽：卡与卡、节点与节点搬得多快</a><a href="#计算受限还是带宽受限" class="toc-h2">计算受限还是带宽受限</a><a href="#完整案例-同一张-gpu-上的两种慢" class="toc-h2">完整案例：同一张 GPU 上的两种慢</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#gpu-共享为什么有用又危险" class="toc-h2">GPU 共享为什么有用又危险</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>硬件通用概念</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>

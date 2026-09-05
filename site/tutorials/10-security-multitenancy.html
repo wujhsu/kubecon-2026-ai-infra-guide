@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="把身份、授权、网络、运行时和审计组合成纵深防御，理解 Kata 与机密容器解决的是哪一层。"><meta name="color-scheme" content="light dark">
+  <title>默认不信任 Agent：安全、沙箱与多租户 · AI Infra Field Guide</title>
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script>try{if(localStorage.getItem('guide-theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}</script>
+</head><body data-root="../" data-page="tutorials/10-security-multitenancy.html" class="">
+  <div class="reading-progress" aria-hidden="true"><i></i></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="app-shell"><nav class="course-nav" aria-label="课程导航">
+    <button class="nav-close" type="button" aria-label="关闭目录" title="关闭目录">×</button>
+    <a class="brand" href="../index.html"><span class="brand-mark">AI</span><span>Infra Field Guide<small>KubeCon China 2026</small></span></a>
+    <div class="nav-group"><p>学习路径</p>
+    <a class="nav-link " href="../tutorials/00-learning-map.html">
+      <span class="nav-index">01</span><span>AI Infra 学习地图</span>
+    </a>
+    <a class="nav-link " href="../tutorials/01-ai-hardware.html">
+      <span class="nav-index">02</span><span>AI 计算硬件</span>
+    </a>
+    <a class="nav-link " href="../tutorials/02-kubernetes-basics.html">
+      <span class="nav-index">03</span><span>Kubernetes 基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/03-pytorch-stack.html">
+      <span class="nav-index">04</span><span>PyTorch 技术栈</span>
+    </a>
+    <a class="nav-link " href="../tutorials/04-distributed-training.html">
+      <span class="nav-index">05</span><span>分布式训练</span>
+    </a>
+    <a class="nav-link " href="../tutorials/05-gpu-communication.html">
+      <span class="nav-index">06</span><span>GPU 通信与 NCCL</span>
+    </a>
+    <a class="nav-link " href="../tutorials/06-llm-inference.html">
+      <span class="nav-index">07</span><span>LLM 推理基础</span>
+    </a>
+    <a class="nav-link " href="../tutorials/07-distributed-inference.html">
+      <span class="nav-index">08</span><span>分布式推理系统</span>
+    </a>
+    <a class="nav-link " href="../tutorials/08-k8s-ai-scheduling.html">
+      <span class="nav-index">09</span><span>Kubernetes AI 调度</span>
+    </a>
+    <a class="nav-link " href="../tutorials/09-agent-infra.html">
+      <span class="nav-index">10</span><span>Agent 基础设施</span>
+    </a>
+    <a class="nav-link is-active" href="../tutorials/10-security-multitenancy.html">
+      <span class="nav-index">11</span><span>安全与多租户</span>
+    </a>
+    <a class="nav-link " href="../tutorials/11-observability-reliability.html">
+      <span class="nav-index">12</span><span>可观测性与可靠性</span>
+    </a></div>
+    <div class="nav-group"><p>现场工具</p>
+    <a class="nav-link " href="../reference/glossary.html">
+      <span class="nav-index">90</span><span>术语表</span>
+    </a>
+    <a class="nav-link " href="../reference/schedule-map.html">
+      <span class="nav-index">91</span><span>议程映射</span>
+    </a>
+    <a class="nav-link " href="../reference/field-cheatsheet.html">
+      <span class="nav-index">92</span><span>会场速查</span>
+    </a></div>
+  </nav><div class="main-shell"><header class="topbar">
+    <button class="mobile-menu" type="button" aria-label="打开目录" aria-expanded="false" title="课程目录">目录</button>
+    <a class="mobile-brand" href="../index.html">AI Infra Field Guide</a>
+    <div class="top-actions">
+      <button type="button" data-action="search" aria-haspopup="dialog" title="搜索"><span aria-hidden="true">⌕</span> 搜索</button>
+      <button type="button" data-action="glossary" aria-haspopup="dialog" title="术语速查">术语</button>
+      <button type="button" data-action="theme" aria-label="切换深浅主题" title="切换主题">主题</button>
+    </div>
+  </header><main id="main" class="article-wrap">
+    <article class="article">
+      <header class="article-head"><div class="eyebrow">安全治理 · 45 分钟</div><h1>默认不信任 Agent：安全、沙箱与多租户</h1><p>把身份、授权、网络、运行时和审计组合成纵深防御，理解 Kata 与机密容器解决的是哪一层。</p><div class="meta"><span>中级</span><span>更新于 2026-09-05</span><span>3 个关联场次</span></div></header>
+      <details class="mobile-toc"><summary>本页目录</summary><nav aria-label="移动端页内目录"><a href="#学习目标" class="toc-h2">学习目标</a><a href="#先区分五个安全问题" class="toc-h2">先区分五个安全问题</a><a href="#为什么普通容器边界可能不够" class="toc-h2">为什么普通容器边界可能不够</a><a href="#机密容器又多解决一层" class="toc-h2">机密容器又多解决一层</a><a href="#多租户-agent-的纵深防御" class="toc-h2">多租户 Agent 的纵深防御</a><a href="#runc-的路径攻击为什么值得听" class="toc-h2">runc 的路径攻击为什么值得听</a><a href="#完整案例-prompt-注入如何变成云权限泄漏" class="toc-h2">完整案例：Prompt 注入如何变成云权限泄漏</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a></nav></details>
+      <div class="prose"><h2 id="学习目标">学习目标</h2>
+<p>理解认证、授权和隔离不是同一件事；能比较普通容器、Kata 微虚机和机密容器；能为运行不可信 Agent 代码画出纵深防御边界。</p>
+<blockquote>
+<p><strong>一句话直觉</strong>：安全不是一把更厚的锁，而是办公楼的多层门禁：访客身份、房间权限、隔离办公室、网络出口和摄像记录缺一不可。</p>
+</blockquote>
+<h2 id="先区分五个安全问题">先区分五个安全问题</h2>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>机制示例</th>
+<th>它不负责什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>你是谁？</td>
+<td>OIDC、ServiceAccount、工作负载身份</td>
+<td>不决定允许做什么</td>
+</tr>
+<tr>
+<td>你能做什么？</td>
+<td>RBAC、业务授权策略</td>
+<td>不隔离内核漏洞</td>
+</tr>
+<tr>
+<td>你能访问哪里？</td>
+<td>NetworkPolicy、Egress Gateway</td>
+<td>不检查代码自身是否恶意</td>
+</tr>
+<tr>
+<td>代码在哪里运行？</td>
+<td>seccomp、容器、Kata 微虚机</td>
+<td>不替代业务审批</td>
+</tr>
+<tr>
+<td>做过什么？</td>
+<td>Audit Log、Trace、工具调用记录</td>
+<td>记录本身不能阻止攻击</td>
+</tr>
+</tbody>
+</table>
+<h2 id="为什么普通容器边界可能不够">为什么普通容器边界可能不够</h2>
+<p>普通容器通过 Namespace、cgroup、Capabilities 和 seccomp 等共享宿主机内核。对可信微服务通常足够高效；但 Agent 可能执行未知代码，攻击者若利用内核或运行时漏洞，影响范围可能跨容器。</p>
+<p>Kata Containers 让工作负载运行在轻量虚拟机中，提供独立内核，同时尽量保持容器式体验。制作时最新版本为 4.1.0。它提高隔离，但会引入启动、镜像、内存、设备直通和可观测性成本。</p>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IExSCiAgICBzdWJncmFwaCBDW+aZrumAmuWuueWZqF0KICAgICAgQzFbQWdlbnQgQV0gLS0+IEhLW+WFseS6q+Wuv+S4u+acuuWGheaguF0KICAgICAgQzJbQWdlbnQgQl0gLS0+IEhLCiAgICBlbmQKICAgIHN1YmdyYXBoIEtbS2F0YSDmqKHlvI9dCiAgICAgIEExW0FnZW50IEFdIC0tPiBWTTFbR3Vlc3QgS2VybmVsIEFdCiAgICAgIEEyW0FnZW50IEJdIC0tPiBWTTJbR3Vlc3QgS2VybmVsIEJdCiAgICAgIFZNMSAtLT4gSFZbSHlwZXJ2aXNvcl0KICAgICAgVk0yIC0tPiBIVgogICAgZW5kCg==">flowchart LR
+    subgraph C[普通容器]
+      C1[Agent A] --&gt; HK[共享宿主机内核]
+      C2[Agent B] --&gt; HK
+    end
+    subgraph K[Kata 模式]
+      A1[Agent A] --&gt; VM1[Guest Kernel A]
+      A2[Agent B] --&gt; VM2[Guest Kernel B]
+      VM1 --&gt; HV[Hypervisor]
+      VM2 --&gt; HV
+    end
+</pre></div><h2 id="机密容器又多解决一层">机密容器又多解决一层</h2>
+<p>Kata 主要加强工作负载之间及与宿主机的隔离；Confidential Computing 借助 TDX、SEV-SNP 等可信执行环境，减少云平台或宿主机管理员读取 Guest 内存的能力，并配合远程证明确认运行环境。</p>
+<p>它不能自动保证模型代码没有漏洞，也不能阻止应用主动把秘密发到网络。可信硬件、镜像供应链、密钥释放和应用策略必须共同工作。</p>
+<h2 id="多租户-agent-的纵深防御">多租户 Agent 的纵深防御</h2>
+<div class="diagram-wrap"><pre class="mermaid" data-mermaid-source="Zmxvd2NoYXJ0IFRCCiAgICBJW+avj+S4qiBBZ2VudCDni6znq4vouqvku71dIC0tPiBSW+acgOWwjyBSQkFDIOS4juS6keadg+mZkF0KICAgIFIgLS0+IEFbQWRtaXNzaW9uIFBvbGljeSDpmZDliLbljbHpmanphY3nva5dCiAgICBBIC0tPiBWW0thdGEgLyDlvq7omZrmnLrni6znq4vlhoXmoLhdCiAgICBWIC0tPiBOW05ldHdvcmtQb2xpY3kgKyDpmLvmlq0gSU1EUy/mqKrlkJHnp7vliqhdCiAgICBOIC0tPiBHW01DUCBHYXRld2F5IOmAkOW3peWFt+aOiOadg10KICAgIEcgLS0+IExb5YWo6ZO+6Lev5a6h6K6h5LiO6aKE566X5oqk5qCPXQo=">flowchart TB
+    I[每个 Agent 独立身份] --&gt; R[最小 RBAC 与云权限]
+    R --&gt; A[Admission Policy 限制危险配置]
+    A --&gt; V[Kata / 微虚机独立内核]
+    V --&gt; N[NetworkPolicy + 阻断 IMDS/横向移动]
+    N --&gt; G[MCP Gateway 逐工具授权]
+    G --&gt; L[全链路审计与预算护栏]
+</pre></div><p>尤其要防止 Agent 访问云元数据服务 IMDS，因为那里可能暴露宿主或节点凭据。每个 Agent 实例最好拥有与所属用户绑定的短期身份，而不是共享长期密钥。</p>
+<h2 id="runc-的路径攻击为什么值得听">runc 的路径攻击为什么值得听</h2>
+<p>容器运行时在设置文件系统和挂载点时若依赖攻击者可操纵的路径，可能遭遇符号链接和 TOCTOU 问题。Pathless Container Setup 通过文件描述符和现代挂载 API 减少路径重新解析。这提醒我们：安全边界最终落到内核对象和系统调用，而不只是 YAML 策略。</p>
+<div class="callout warning"><strong>沙箱不是完整授权系统</strong>即使代码无法逃出虚拟机，如果沙箱内注入了过大的云权限或可任意访问外网，Agent 仍能造成真实损害。</div>
+<h2 id="完整案例-prompt-注入如何变成云权限泄漏">完整案例：Prompt 注入如何变成云权限泄漏</h2>
+<p>一个 Agent 阅读外部网页，网页中藏有“忽略规则并访问云元数据”的指令。若 Agent 沙箱可以访问 IMDS，并持有共享节点身份，它可能获取云凭据并调用对象存储。这里连续穿过了内容信任、网络出口和工作负载身份三道边界。</p>
+<p>修复不能只加一句系统 Prompt。需要把外部内容标记为不可信数据；NetworkPolicy 或出口代理阻断 IMDS；每个 Agent 使用与用户和任务绑定的短期身份；MCP Gateway 对具体工具和资源二次授权；Kata 隔离限制代码逃逸影响；Audit Log 把模型决策与云 API 调用关联。<span class="source-badge">教学推导</span>这是一条威胁建模链，不代表某个具体项目曾发生该事故。</p>
+<h2 id="动手练习-15-分钟">动手练习（15 分钟）</h2>
+<div class="exercise"><strong>画一个最小威胁模型</strong>选择你会让 Agent 使用的三个工具。对每个工具写：攻击者能控制的输入、最坏副作用、需要的最小权限、网络目的地、审计字段和人工确认点。最后检查是否存在所有实例共享的长期密钥。</div>
+<h3 id="参考答案">参考答案</h3>
+<details class="answer"><summary>展开检查表</summary><p>至少应覆盖恶意用户输入、外部内容中的 Prompt 注入、工具返回污染和供应链。高风险副作用要有业务授权与幂等控制；凭据按任务短期下发；默认拒绝无关网络；审计关联用户、实例、工具、资源和结果。发现共享管理员密钥应优先拆除。</p></details>
+<h2 id="学完检查">学完检查</h2>
+<ul class="learning-check"><li>我能区分认证、授权、网络控制、运行时隔离和审计。</li><li>我知道 Kata 与机密计算分别覆盖哪些威胁面。</li><li>我不会把“在沙箱里”误解为“可以给任意权限”。</li></ul>
+<h2 id="常见误区">常见误区</h2>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RBAC 能阻止容器逃逸</td>
+<td>RBAC 管 Kubernetes API 权限，不是内核隔离。</td>
+</tr>
+<tr>
+<td>Kata 比普通容器“全面更好”</td>
+<td>隔离更强，但设备、启动、资源和运维成本更高。</td>
+</tr>
+<tr>
+<td>机密计算等于应用绝对安全</td>
+<td>它保护特定威胁面，不修复应用漏洞和错误授权。</td>
+</tr>
+<tr>
+<td>不保存 Prompt 就无需审计</td>
+<td>工具副作用、策略判断和身份链仍需可追溯。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="对应论坛场次">对应论坛场次</h2>
+<div class="session-list">
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1218010"><strong>9/9 16:15 · Securing AI Agents at Scale</strong><br>关注 Kata、OIDC 身份、NetworkPolicy、Admission 与审计如何组合。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1220661"><strong>9/9 14:30 · Kata Containers for the Agent Era</strong><br>关注启动时延、Hypervisor、跨 OS 沙箱与机密计算。</a>
+<a class="external-session" data-online="true" href="https://kubecon-cloudnativecon-openinfra-pytorch-2026.sessionize.com/session/1224844"><strong>9/9 11:00 · Pathless runc Security</strong><br>关注 ProcFS 路径攻击与文件描述符中心设计。</a>
+</div>
+<p class="session-notes">离线笔记：<a href="../notes/day-3/16-15-securing-ai-agents.md">Agent Security</a> · <a href="../notes/day-3/14-30-kata-agent-sandbox.md">Kata</a> · <a href="../notes/day-3/11-00-pathless-runc.md">Pathless runc</a></p>
+<h3 id="带着这些问题听">带着这些问题听</h3>
+<ul>
+<li>威胁模型包括恶意用户、恶意 Prompt、宿主机管理员还是供应链？</li>
+<li>性能数字是否包含冷启动、设备直通和镜像准备？</li>
+<li>用户身份怎样缩小到某个 Agent 实例和单次工具调用？</li>
+</ul>
+<h2 id="五道自测题">五道自测题</h2>
+<div class="quiz">
+<details><summary>1. 认证与授权的区别？</summary><p>认证确认身份；授权决定该身份能执行哪些动作。</p></details>
+<details><summary>2. 普通容器和 Kata 的主要内核差异？</summary><p>普通容器通常共享宿主机内核；Kata 工作负载位于轻量 VM 的 Guest Kernel。</p></details>
+<details><summary>3. 机密计算主要防什么？</summary><p>减少宿主或云平台读取运行中工作负载内存，并通过证明验证环境。</p></details>
+<details><summary>4. 为什么要阻断 IMDS？</summary><p>它可能暴露节点或云身份凭据，供不可信代码扩大权限。</p></details>
+<details><summary>5. 沙箱内注入管理员密钥是否安全？</summary><p>不安全。隔离逃逸风险不等于限制沙箱主动使用凭据造成的外部副作用。</p></details>
+</div>
+<h2 id="延伸阅读">延伸阅读</h2>
+<ul>
+<li><a href="https://github.com/kata-containers/kata-containers/releases/tag/4.1.0">Kata Containers 4.1.0</a></li>
+<li><a href="https://kubernetes.io/docs/concepts/security/">Kubernetes Security Concepts</a></li>
+</ul>
+</div>
+      <nav class="article-pager" aria-label="上下篇"><a href="09-agent-infra.html"><small>上一篇</small>Agent 基础设施</a><a class="next" href="11-observability-reliability.html"><small>下一篇</small>可观测性与可靠性</a></nav>
+    </article>
+  </main></div><aside class="page-toc" aria-label="页内目录"><p>本页内容</p><a href="#学习目标" class="toc-h2">学习目标</a><a href="#先区分五个安全问题" class="toc-h2">先区分五个安全问题</a><a href="#为什么普通容器边界可能不够" class="toc-h2">为什么普通容器边界可能不够</a><a href="#机密容器又多解决一层" class="toc-h2">机密容器又多解决一层</a><a href="#多租户-agent-的纵深防御" class="toc-h2">多租户 Agent 的纵深防御</a><a href="#runc-的路径攻击为什么值得听" class="toc-h2">runc 的路径攻击为什么值得听</a><a href="#完整案例-prompt-注入如何变成云权限泄漏" class="toc-h2">完整案例：Prompt 注入如何变成云权限泄漏</a><a href="#动手练习-15-分钟" class="toc-h2">动手练习（15 分钟）</a><a href="#参考答案" class="toc-h3">参考答案</a><a href="#学完检查" class="toc-h2">学完检查</a><a href="#常见误区" class="toc-h2">常见误区</a><a href="#对应论坛场次" class="toc-h2">对应论坛场次</a><a href="#带着这些问题听" class="toc-h3">带着这些问题听</a><a href="#五道自测题" class="toc-h2">五道自测题</a><a href="#延伸阅读" class="toc-h2">延伸阅读</a><div class="freshness"><span>资料核对</span><strong>2026-09-05</strong><small>Kata Containers 4.1.0 · Kubernetes v1.37</small></div></aside></div>
+  <button class="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <button class="back-to-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="backdrop" data-overlay-close hidden></div>
+  <dialog class="search-dialog" data-dialog="search">
+    <form method="dialog" class="dialog-head"><strong>搜索教程</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">搜索关键词</span><input type="search" placeholder="试试：KV Cache、NCCL、DRA" autocomplete="off" data-search-input></label>
+    <div class="search-results" data-search-results><p class="empty-hint">输入术语、项目或论坛主题。</p></div>
+  </dialog>
+  <dialog class="glossary-dialog" data-dialog="glossary">
+    <form method="dialog" class="dialog-head"><strong>核心术语速查</strong><button aria-label="关闭">关闭</button></form>
+    <label class="search-field"><span class="sr-only">筛选术语</span><input type="search" placeholder="输入术语或中文解释" autocomplete="off" data-glossary-input></label>
+    <div class="glossary-list" data-glossary-list></div>
+    <a class="dialog-link" href="../reference/glossary.html">打开完整术语表</a>
+  </dialog>
+  <script src="../assets/search-index.js"></script>
+  <script src="../assets/glossary-index.js"></script>
+  <script src="../assets/mermaid.min.js"></script>
+  <script src="../assets/app.js"></script>
+</body></html>
